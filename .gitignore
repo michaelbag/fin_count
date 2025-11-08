@@ -63,3 +63,5 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+# Temporary files
+temp_files/

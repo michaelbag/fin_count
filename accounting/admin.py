@@ -15,6 +15,7 @@ from .models import (
     AdvanceReturn, AdditionalAdvancePayment, CashTransfer, CurrencyConversion
 )
 from .admin_sites import references_admin, documents_admin, registers_admin
+from .forms import CurrencyRateAdminForm
 
 
 # ============================================================================
@@ -77,12 +78,14 @@ class EmployeeAdmin(admin.ModelAdmin):
 @admin.register(CurrencyRate)
 class CurrencyRateAdmin(admin.ModelAdmin):
     """Админка для справочника курсов валют"""
+    form = CurrencyRateAdminForm
     list_display = ['from_currency', 'to_currency', 'rate', 'date', 'is_active', 'created_at']
     list_filter = ['from_currency', 'to_currency', 'date', 'is_active', 'created_at']
     search_fields = ['from_currency__code', 'from_currency__name', 'to_currency__code', 'to_currency__name']
     ordering = ['-date', 'from_currency', 'to_currency']
     list_editable = ['is_active']
-    raw_id_fields = ['from_currency', 'to_currency']
+    # Убираем raw_id_fields и autocomplete_fields, чтобы использовался кастомный виджет из формы
+    # Кастомный виджет CurrencySelectWidget отображает только код валюты
     date_hierarchy = 'date'
 
 

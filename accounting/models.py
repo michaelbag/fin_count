@@ -228,7 +228,7 @@ class CurrencyRate(BaseReference):
     )
     rate = models.DecimalField(
         max_digits=15,
-        decimal_places=6,
+        decimal_places=4,
         verbose_name='Курс обмена'
     )
     date = models.DateField(
@@ -254,6 +254,34 @@ class CurrencyRate(BaseReference):
         
         return rate.rate if rate else None
 
+    def _auto_fill_name(self):
+        """Автоматическое заполнение наименования, если не заполнено"""
+        if not self.name and self.from_currency and self.to_currency and self.rate:
+            # Округляем курс до сотых (2 знака после запятой)
+            rate_rounded = self.rate.quantize(Decimal('0.01'))
+            self.name = f"{self.from_currency.code} - {rate_rounded} - {self.to_currency.code}"
+    
+    def clean(self):
+        """Валидация курса и автоматическое заполнение наименования"""
+        # Автоматическое заполнение наименования, если не заполнено (до валидации)
+        self._auto_fill_name()
+        
+        # Вызываем clean() базового класса для проверки обязательности полей
+        super().clean()
+        
+        # Валидация курса
+        if self.rate <= 0:
+            raise ValidationError({'rate': 'Курс обмена должен быть положительным'})
+    
+    def save(self, *args, **kwargs):
+        """Сохранение с автоматическим заполнением наименования"""
+        # Заполняем наименование ПЕРЕД валидацией
+        self._auto_fill_name()
+        
+        # Вызываем full_clean() для валидации (теперь наименование уже заполнено)
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = 'Курс валют'
         verbose_name_plural = 'Курсы валют'
@@ -262,12 +290,6 @@ class CurrencyRate(BaseReference):
             models.Index(fields=['from_currency', 'to_currency', 'date']),
         ]
         ordering = ['-date', 'from_currency', 'to_currency']
-
-    def clean(self):
-        """Валидация курса"""
-        super().clean()
-        if self.rate <= 0:
-            raise ValidationError({'rate': 'Курс обмена должен быть положительным'})
 
     def __str__(self):
         return f"{self.from_currency.code}/{self.to_currency.code} = {self.rate} на {self.date}"

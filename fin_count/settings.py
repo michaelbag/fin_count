@@ -110,6 +110,12 @@ if DATABASE_URL:
             "Для использования DATABASE_URL необходимо установить dj-database-url: "
             "pip install dj-database-url"
         )
+    except Exception as e:
+        # Обработка ошибок парсинга DATABASE_URL (неправильный формат и т.д.)
+        raise ValueError(
+            f"Ошибка при парсинге DATABASE_URL: {e}. "
+            f"Проверьте формат DATABASE_URL (например: postgresql://user:password@host:port/dbname)"
+        )
 elif os.getenv('DB_NAME'):
     # Использование отдельных переменных окружения
     DATABASES = {

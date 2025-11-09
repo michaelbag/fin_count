@@ -1,0 +1,93 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'reports_index' %}">Отчеты</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="get" style="margin-bottom: 20px;">
+    <fieldset class="module aligned">
+        <div class="form-row">
+            <div>
+                <label for="id_from_date">Дата начала:</label>
+                <input type="date" name="from_date" id="id_from_date" value="{{ from_date|date:'Y-m-d' }}" required>
+            </div>
+            <div>
+                <label for="id_to_date">Дата окончания:</label>
+                <input type="date" name="to_date" id="id_to_date" value="{{ to_date|date:'Y-m-d' }}" required>
+            </div>
+            <div>
+                <label for="id_cash_register">Касса:</label>
+                <select name="cash_register" id="id_cash_register">
+                    <option value="">Все</option>
+                    {% for cr in cash_registers %}
+                    <option value="{{ cr.id }}" {% if selected_cash_register == cr.id %}selected{% endif %}>{{ cr.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="id_currency">Валюта:</label>
+                <select name="currency" id="id_currency">
+                    <option value="">Все</option>
+                    {% for curr in currencies %}
+                    <option value="{{ curr.id }}" {% if selected_currency == curr.id %}selected{% endif %}>{{ curr.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <input type="submit" value="Сформировать" class="default">
+            </div>
+        </div>
+    </fieldset>
+</form>
+
+<div class="module">
+    {% for expense_item, data in items_data.items %}
+    <h3>{{ expense_item.name }}</h3>
+    <table style="width: 100%; margin-bottom: 20px;">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Документ</th>
+                <th style="text-align: right;">Сумма</th>
+                <th>Описание</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in data.items %}
+            <tr>
+                <td>{{ item.date|date:"d.m.Y" }}</td>
+                <td>{{ item.report.number }}</td>
+                <td style="text-align: right;">{{ item.amount|floatformat:2 }} {{ item.report.currency.code }}</td>
+                <td>{{ item.description|truncatewords:10 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="font-weight: bold;">
+                <td colspan="2">Итого по статье:</td>
+                <td style="text-align: right;">{{ data.total|floatformat:2 }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+    {% empty %}
+    <p>Нет данных за выбранный период</p>
+    {% endfor %}
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="{% url 'accounting:reports_index' %}" class="button">← К списку отчетов</a>
+    <a href="{% url 'admin:index' %}" class="button">← Вернуться в админ-панель</a>
+</div>
+{% endblock %}
+

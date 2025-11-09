@@ -10,22 +10,40 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+from django.core.management.utils import get_random_secret_key
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Загрузка переменных окружения из .env файла
+# Для production используйте системные переменные окружения
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / '.env')
+except ImportError:
+    # Если python-dotenv не установлен, переменные окружения должны быть установлены в системе
+    pass
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-hos-(h4g=fx!6$m0i2z@bzx*atf5!)7eqv(z(+ecyupojfj!3='
+# Секретный ключ загружается из переменной окружения SECRET_KEY
+# Если переменная не установлена, генерируется случайный ключ (только для разработки!)
+SECRET_KEY = os.getenv('SECRET_KEY', get_random_secret_key())
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Режим отладки загружается из переменной окружения DEBUG
+# По умолчанию True для разработки, но должен быть False для production
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']  # Разрешить доступ со всех IP адресов (только для разработки!)
+# Разрешенные хосты загружаются из переменной окружения ALLOWED_HOSTS
+# Формат: через запятую, без пробелов (например: example.com,www.example.com)
+# Для разработки можно использовать: *
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -73,12 +91,45 @@ WSGI_APPLICATION = 'fin_count.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Настройка базы данных из переменных окружения
+# Если указан DATABASE_URL, используется он (формат: postgresql://user:password@host:port/dbname)
+# Иначе используются отдельные переменные DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+# Если ничего не указано, используется SQLite для разработки
+
+DATABASE_URL = os.getenv('DATABASE_URL', '')
+
+if DATABASE_URL:
+    # Использование DATABASE_URL (обычно для production)
+    try:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.parse(DATABASE_URL)
+        }
+    except ImportError:
+        raise ImportError(
+            "Для использования DATABASE_URL необходимо установить dj-database-url: "
+            "pip install dj-database-url"
+        )
+elif os.getenv('DB_NAME'):
+    # Использование отдельных переменных окружения
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'fin_count'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+        }
     }
-}
+else:
+    # SQLite для разработки (по умолчанию)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -121,3 +172,9 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Настройки системы финансового учета
+# Глобальный префикс номеров документов (2 символа)
+# Загружается из переменной окружения DOCUMENT_NUMBER_PREFIX
+# По умолчанию: 'SC'
+DOCUMENT_NUMBER_PREFIX = os.getenv('DOCUMENT_NUMBER_PREFIX', 'SC')

@@ -1,4 +1,9 @@
 Django==5.2.8
+# Для загрузки переменных окружения из .env файла (для разработки)
+python-dotenv>=1.0.0
+# Для парсинга DATABASE_URL (опционально, для production с PostgreSQL)
+dj-database-url>=2.1.0
+
 # Для PostgreSQL (опционально, для промышленного применения):
 # psycopg2-binary>=2.9.0
 

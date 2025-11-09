@@ -16,8 +16,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from accounting.admin_sites import references_admin, documents_admin, registers_admin
 
 urlpatterns = [
+    # Кастомные разделы админки должны быть ДО основного admin.site.urls
+    path('admin/references/', references_admin.urls),
+    path('admin/documents/', documents_admin.urls),
+    path('admin/registers/', registers_admin.urls),
+    # Основной раздел админки
     path('admin/', admin.site.urls),
     path('', include('accounting.urls')),
 ]

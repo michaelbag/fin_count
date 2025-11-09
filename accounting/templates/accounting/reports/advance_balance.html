@@ -1,0 +1,79 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'reports_index' %}">Отчеты</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="get" style="margin-bottom: 20px;">
+    <fieldset class="module aligned">
+        <div class="form-row">
+            <div>
+                <label for="id_date">Дата отчета:</label>
+                <input type="date" name="date" id="id_date" value="{{ date|date:'Y-m-d' }}" required>
+            </div>
+            <div>
+                <label for="id_employee">Сотрудник:</label>
+                <select name="employee" id="id_employee">
+                    <option value="">Все</option>
+                    {% for emp in employees %}
+                    <option value="{{ emp.id }}" {% if selected_employee == emp.id %}selected{% endif %}>{{ emp.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="id_currency">Валюта:</label>
+                <select name="currency" id="id_currency">
+                    <option value="">Все</option>
+                    {% for curr in currencies %}
+                    <option value="{{ curr.id }}" {% if selected_currency == curr.id %}selected{% endif %}>{{ curr.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <input type="submit" value="Сформировать" class="default">
+            </div>
+        </div>
+    </fieldset>
+</form>
+
+<div class="module">
+    <table style="width: 100%;">
+        <thead>
+            <tr>
+                <th>Сотрудник</th>
+                <th>Валюта</th>
+                <th style="text-align: right;">Остаток</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for balance in balances_data %}
+            <tr>
+                <td>{{ balance.employee.full_name }}</td>
+                <td>{{ balance.currency.code }}</td>
+                <td style="text-align: right;">{{ balance.balance|floatformat:2 }} {{ balance.currency.code }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">Нет данных</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="{% url 'accounting:reports_index' %}" class="button">← К списку отчетов</a>
+    <a href="{% url 'admin:index' %}" class="button">← Вернуться в админ-панель</a>
+</div>
+{% endblock %}
+

@@ -102,14 +102,16 @@ if DATABASE_URL:
     # Использование DATABASE_URL (обычно для production)
     try:
         import dj_database_url
-        DATABASES = {
-            'default': dj_database_url.parse(DATABASE_URL)
-        }
     except ImportError:
         raise ImportError(
             "Для использования DATABASE_URL необходимо установить dj-database-url: "
             "pip install dj-database-url"
         )
+    
+    try:
+        DATABASES = {
+            'default': dj_database_url.parse(DATABASE_URL)
+        }
     except Exception as e:
         # Обработка ошибок парсинга DATABASE_URL (неправильный формат и т.д.)
         raise ValueError(

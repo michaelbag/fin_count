@@ -45,6 +45,7 @@ class CashRegisterAdmin(admin.ModelAdmin):
         """Оптимизация запросов"""
         return super().get_queryset(request).select_related()
     
+    @admin.display(description='Остатки по валютам')
     def balances_display(self, obj):
         """
         Отображает текущие остатки по кассе по всем активным валютам
@@ -69,9 +70,6 @@ class CashRegisterAdmin(admin.ModelAdmin):
             return format_html('<span style="color: #999;">Нет остатков</span>')
         
         return format_html('<br>'.join(balances))
-    
-    balances_display.short_description = 'Остатки по валютам'
-    balances_display.allow_tags = True
 
 
 @admin.register(IncomeExpenseItem)
@@ -122,7 +120,6 @@ class CurrencyRateAdmin(admin.ModelAdmin):
 # ДОКУМЕНТЫ
 # ============================================================================
 
-@admin.register(IncomeDocument)
 class IncomeDocumentAdmin(admin.ModelAdmin):
     """Админка для документов оприходования денег"""
     list_display = ['number', 'date', 'cash_register', 'currency', 'amount', 'item', 'employee', 'is_posted', 'is_deleted']
@@ -147,7 +144,6 @@ class IncomeDocumentAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(ExpenseDocument)
 class ExpenseDocumentAdmin(admin.ModelAdmin):
     """Админка для документов расхода денег"""
     list_display = ['number', 'date', 'cash_register', 'currency', 'amount', 'item', 'employee', 'is_posted', 'is_deleted']
@@ -172,16 +168,16 @@ class ExpenseDocumentAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(AdvancePayment)
 class AdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов выдачи денег подотчетному лицу"""
     list_display = ['number', 'date', 'employee', 'cash_register', 'currency', 'amount', 'additional_payments_display', 'unreported_balance_display', 'expense_item', 'is_closed', 'is_posted', 'is_deleted']
     list_filter = ['employee', 'currency', 'expense_item', 'is_closed', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'purpose']
     ordering = ['-date', '-created_at']
-    raw_id_fields = ['employee', 'cash_register', 'currency', 'expense_item']
+    raw_id_fields = ['employee', 'currency', 'expense_item']
     date_hierarchy = 'date'
     readonly_fields = ['is_posted', 'additional_payments_display', 'unreported_balance_display', 'created_at', 'updated_at']
+    autocomplete_fields = ['cash_register']
     
     fieldsets = (
         ('Основная информация', {
@@ -196,6 +192,7 @@ class AdvancePaymentAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Доп. выдачи')
     def additional_payments_display(self, obj):
         """
         Отображает сумму дополнительных выдач по этой выдаче
@@ -222,9 +219,7 @@ class AdvancePaymentAdmin(admin.ModelAdmin):
         else:
             return format_html('<span style="color: #007bff; font-weight: bold;">{}</span>', f'{additional_sum:,.2f} {currency_code}')
     
-    additional_payments_display.short_description = 'Доп. выдачи'
-    additional_payments_display.allow_tags = True
-    
+    @admin.display(description='Не закрытый остаток')
     def unreported_balance_display(self, obj):
         """
         Отображает не закрытый остаток по выдаче
@@ -247,9 +242,6 @@ class AdvancePaymentAdmin(admin.ModelAdmin):
             return format_html('<span style="color: #ffc107; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
         else:
             return format_html('<span style="color: #dc3545; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
-    
-    unreported_balance_display.short_description = 'Не закрытый остаток'
-    unreported_balance_display.allow_tags = True
 
 
 class AdvanceReportItemInline(admin.TabularInline):
@@ -260,7 +252,6 @@ class AdvanceReportItemInline(admin.TabularInline):
     raw_id_fields = ['item']
 
 
-@admin.register(AdvanceReportItem)
 class AdvanceReportItemAdmin(admin.ModelAdmin):
     """Админка для строк авансового отчета"""
     list_display = ['report', 'item', 'amount', 'date', 'description']
@@ -271,7 +262,6 @@ class AdvanceReportItemAdmin(admin.ModelAdmin):
     date_hierarchy = 'date'
 
 
-@admin.register(AdvanceReport)
 class AdvanceReportAdmin(admin.ModelAdmin):
     """Админка для авансовых отчетов"""
     list_display = ['number', 'date', 'advance_payment', 'total_amount', 'return_amount', 'additional_payment', 'status', 'is_posted', 'is_deleted']
@@ -303,7 +293,6 @@ class AdvanceReportAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(AdvanceReturn)
 class AdvanceReturnAdmin(admin.ModelAdmin):
     """Админка для документов возврата денег сотрудником"""
     list_display = ['number', 'date', 'advance_payment', 'employee', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
@@ -328,7 +317,6 @@ class AdvanceReturnAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(AdditionalAdvancePayment)
 class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов дополнительной выдачи подотчетных средств"""
     list_display = ['number', 'date', 'original_advance_payment', 'employee_display', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
@@ -352,6 +340,7 @@ class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Сотрудник')
     def employee_display(self, obj):
         """
         Отображает сотрудника из первоначальной выдачи
@@ -359,11 +348,8 @@ class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
         if obj.original_advance_payment:
             return obj.original_advance_payment.employee
         return '-'
-    
-    employee_display.short_description = 'Сотрудник'
 
 
-@admin.register(CashTransfer)
 class CashTransferAdmin(admin.ModelAdmin):
     """Админка для документов перемещения между кассами"""
     list_display = ['number', 'date', 'from_cash_register', 'to_cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
@@ -388,7 +374,6 @@ class CashTransferAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(CurrencyConversion)
 class CurrencyConversionAdmin(admin.ModelAdmin):
     """Админка для документов конвертации валют"""
     list_display = ['number', 'date', 'from_currency', 'to_currency', 'cash_register', 'from_amount', 'to_amount', 'exchange_rate', 'is_posted', 'is_deleted']
@@ -417,7 +402,6 @@ class CurrencyConversionAdmin(admin.ModelAdmin):
 # ЖУРНАЛ ОПЕРАЦИЙ
 # ============================================================================
 
-@admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     """Админка для журнала операций"""
     list_display = ['date', 'transaction_type', 'cash_register', 'currency', 'amount', 'employee', 'item', 'get_document_link']
@@ -454,6 +438,7 @@ class TransactionAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Документ')
     def get_document_link(self, obj):
         """Отображение ссылки на документ"""
         if obj.income_document:
@@ -473,8 +458,6 @@ class TransactionAdmin(admin.ModelAdmin):
         elif obj.currency_conversion:
             return format_html('<a href="/admin/accounting/currencyconversion/{}/change/">{}</a>', obj.currency_conversion.id, obj.currency_conversion)
         return '-'
-    
-    get_document_link.short_description = 'Документ'
 
 
 # ============================================================================
@@ -489,6 +472,14 @@ references_admin.register(Employee, EmployeeAdmin)
 references_admin.register(CurrencyRate, CurrencyRateAdmin)
 
 # Регистрация документов в кастомном AdminSite
+# Сначала регистрируем связанные модели (справочники) в documents_admin для работы autocomplete_fields
+# Это необходимо, чтобы autocomplete_fields в документах могли находить связанные модели
+documents_admin.register(Currency, CurrencyAdmin)
+documents_admin.register(CashRegister, CashRegisterAdmin)
+documents_admin.register(IncomeExpenseItem, IncomeExpenseItemAdmin)
+documents_admin.register(Employee, EmployeeAdmin)
+
+# Затем регистрируем документы
 documents_admin.register(IncomeDocument, IncomeDocumentAdmin)
 documents_admin.register(ExpenseDocument, ExpenseDocumentAdmin)
 documents_admin.register(AdvancePayment, AdvancePaymentAdmin)

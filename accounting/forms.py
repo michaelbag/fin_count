@@ -1,5 +1,5 @@
 from django import forms
-from .models import CurrencyRate, Currency, Employee
+from .models import CurrencyRate, Currency, Employee, CashRegister, AdvancePayment
 
 
 class CurrencyModelChoiceField(forms.ModelChoiceField):
@@ -122,3 +122,38 @@ class EmployeeAdminForm(forms.ModelForm):
                     self.instance.name = name
         
         return cleaned_data
+
+
+class CurrencyModelChoiceFieldForAdvancePayment(forms.ModelChoiceField):
+    """Поле выбора валюты для формы AdvancePayment с кастомным представлением"""
+    def label_from_instance(self, obj):
+        """Отображаем код и название валюты"""
+        return f"{obj.code} - {obj.name}"
+
+
+class CashRegisterModelChoiceFieldForAdvancePayment(forms.ModelChoiceField):
+    """Поле выбора кассы для формы AdvancePayment с кастомным представлением"""
+    def label_from_instance(self, obj):
+        """Отображаем название кассы с кодом, если есть"""
+        if obj.code:
+            return f"{obj.name} ({obj.code})"
+        return obj.name
+
+
+class AdvancePaymentAdminForm(forms.ModelForm):
+    """Форма для админки AdvancePayment"""
+    
+    class Meta:
+        model = AdvancePayment
+        fields = '__all__'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Добавляем help_text для полей с autocomplete
+        # Фильтрация и представление настраиваются через get_search_results в админке
+        if 'currency' in self.fields:
+            self.fields['currency'].help_text = 'Выберите валюту из списка активных валют'
+        
+        if 'cash_register' in self.fields:
+            self.fields['cash_register'].help_text = 'Выберите кассу из списка активных касс'

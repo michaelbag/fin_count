@@ -8,6 +8,8 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.db.models import Sum, Q
 from decimal import Decimal
+
+from django.utils.timezone import now
 from .models import (
     Currency, CashRegister, IncomeExpenseItem, Employee, CurrencyRate,
     Transaction, IncomeDocument, ExpenseDocument,
@@ -15,7 +17,7 @@ from .models import (
     AdvanceReturn, AdditionalAdvancePayment, CashTransfer, CurrencyConversion
 )
 from .admin_sites import references_admin, documents_admin, registers_admin
-from .forms import CurrencyRateAdminForm, EmployeeAdminForm
+from .forms import CurrencyRateAdminForm, EmployeeAdminForm, AdvancePaymentAdminForm
 
 
 # ============================================================================
@@ -30,6 +32,27 @@ class CurrencyAdmin(admin.ModelAdmin):
     search_fields = ['code', 'name']
     ordering = ['code']
     list_editable = ['is_active']
+    
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Переопределяем поиск для autocomplete_fields.
+        Показываем только активные валюты, если запрос идет из формы AdvancePayment.
+        """
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        
+        # Проверяем, идет ли запрос из формы AdvancePayment
+        # В Django Admin autocomplete запросы содержат параметр 'app_label' и 'model_name'
+        app_label = request.GET.get('app_label', '')
+        model_name = request.GET.get('model_name', '')
+        
+        # Также проверяем через referer, если параметры недоступны
+        referer = request.META.get('HTTP_REFERER', '')
+        
+        if (app_label == 'accounting' and model_name == 'advancepayment') or 'advancepayment' in referer.lower():
+            # Применяем дополнительные фильтры для autocomplete только для AdvancePayment
+            queryset = queryset.filter(is_active=True)
+        
+        return queryset, use_distinct
 
 
 @admin.register(CashRegister)
@@ -44,6 +67,27 @@ class CashRegisterAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Оптимизация запросов"""
         return super().get_queryset(request).select_related()
+    
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Переопределяем поиск для autocomplete_fields.
+        Показываем только активные кассы, если запрос идет из формы AdvancePayment.
+        """
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        
+        # Проверяем, идет ли запрос из формы AdvancePayment
+        # В Django Admin autocomplete запросы содержат параметр 'app_label' и 'model_name'
+        app_label = request.GET.get('app_label', '')
+        model_name = request.GET.get('model_name', '')
+        
+        # Также проверяем через referer, если параметры недоступны
+        referer = request.META.get('HTTP_REFERER', '')
+        
+        if (app_label == 'accounting' and model_name == 'advancepayment') or 'advancepayment' in referer.lower():
+            # Применяем дополнительные фильтры для autocomplete только для AdvancePayment
+            queryset = queryset.filter(is_active=True)
+        
+        return queryset, use_distinct
     
     @admin.display(description='Остатки по валютам')
     def balances_display(self, obj):
@@ -170,14 +214,14 @@ class ExpenseDocumentAdmin(admin.ModelAdmin):
 
 class AdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов выдачи денег подотчетному лицу"""
+    form = AdvancePaymentAdminForm
     list_display = ['number', 'date', 'employee', 'cash_register', 'currency', 'amount', 'additional_payments_display', 'unreported_balance_display', 'expense_item', 'is_closed', 'is_posted', 'is_deleted']
     list_filter = ['employee', 'currency', 'expense_item', 'is_closed', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'purpose']
     ordering = ['-date', '-created_at']
-    raw_id_fields = ['employee', 'currency', 'expense_item']
     date_hierarchy = 'date'
     readonly_fields = ['is_posted', 'additional_payments_display', 'unreported_balance_display', 'created_at', 'updated_at']
-    autocomplete_fields = ['cash_register']
+    autocomplete_fields = ['cash_register', 'currency', 'employee', 'expense_item']  # Autocomplete с фильтрацией через get_search_results
     
     fieldsets = (
         ('Основная информация', {
@@ -323,7 +367,7 @@ class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
     list_filter = ['currency', 'cash_register', 'is_posted', 'is_deleted', 'date', 'original_advance_payment__employee']
     search_fields = ['number', 'purpose', 'original_advance_payment__number']
     ordering = ['-date', '-created_at']
-    raw_id_fields = ['original_advance_payment', 'cash_register', 'currency']
+    autocomplete_fields = ['original_advance_payment', 'cash_register', 'currency']
     date_hierarchy = 'date'
     readonly_fields = ['is_posted', 'employee_display', 'created_at', 'updated_at']
     
@@ -352,14 +396,22 @@ class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
 
 class CashTransferAdmin(admin.ModelAdmin):
     """Админка для документов перемещения между кассами"""
-    list_display = ['number', 'date', 'from_cash_register', 'to_cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
+    list_display = [
+        "number",
+        "date",
+        "amount_with_currency",
+        "from_cash_register",
+        "to_cash_register",
+        "is_posted",
+        "is_deleted",
+    ]
     list_filter = ['from_cash_register', 'to_cash_register', 'currency', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number']
     ordering = ['-date', '-created_at']
     raw_id_fields = ['from_cash_register', 'to_cash_register', 'currency']
     date_hierarchy = 'date'
     readonly_fields = ['is_posted', 'created_at', 'updated_at']
-    
+
     fieldsets = (
         ('Основная информация', {
             'fields': ('number', 'date', 'from_cash_register', 'to_cash_register', 'currency', 'amount')
@@ -372,6 +424,11 @@ class CashTransferAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+    @admin.display(description='Сумма', ordering='amount')
+    def amount_with_currency(self, obj):
+        return format_html('<span style="white-space: nowrap;">{}</span>', f"{obj.amount} {obj.currency.symbol}")
+    
 
 
 class CurrencyConversionAdmin(admin.ModelAdmin):

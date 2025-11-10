@@ -83,6 +83,51 @@ class CashRegister(BaseReference):
         balance = queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         
         return balance
+    
+    def get_balances_string(self):
+        """
+        Получить строку с остатками по всем активным валютам для отображения в autocomplete.
+        """
+        if not self.pk:
+            return ''
+        
+        # Ленивый импорт для избежания циклического импорта
+        from django.apps import apps
+        Currency = apps.get_model('accounting', 'Currency')
+        
+        # Получаем все активные валюты
+        currencies = Currency.objects.filter(is_active=True).order_by('code')
+        
+        if not currencies.exists():
+            return ''
+        
+        # Получаем остатки по каждой валюте
+        balances = []
+        for currency in currencies:
+            balance = self.get_balance(currency)
+            if balance != Decimal('0.00'):
+                balances.append(f"{currency.code}: {balance:,.2f}")
+        
+        if not balances:
+            return ''
+        
+        return f" ({', '.join(balances)})"
+
+    def __str__(self):
+        """
+        Переопределяем __str__ для отображения кассы с остатками по валютам.
+        Используется в autocomplete и других местах.
+        """
+        name = self.name
+        if self.code:
+            name = f"{self.name} ({self.code})"
+        
+        # Добавляем остатки по валютам
+        balances_str = self.get_balances_string()
+        if balances_str:
+            name += balances_str
+        
+        return name
 
     class Meta:
         verbose_name = 'Касса'

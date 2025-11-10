@@ -15,7 +15,7 @@ from .models import (
     AdvanceReturn, AdditionalAdvancePayment, CashTransfer, CurrencyConversion
 )
 from .admin_sites import references_admin, documents_admin, registers_admin
-from .forms import CurrencyRateAdminForm
+from .forms import CurrencyRateAdminForm, EmployeeAdminForm
 
 
 # ============================================================================
@@ -35,7 +35,7 @@ class CurrencyAdmin(admin.ModelAdmin):
 @admin.register(CashRegister)
 class CashRegisterAdmin(admin.ModelAdmin):
     """Админка для справочника касс"""
-    list_display = ['name', 'is_active', 'created_at']
+    list_display = ['name', 'balances_display', 'is_active', 'created_at']
     list_filter = ['is_active', 'created_at']
     search_fields = ['name', 'description']
     ordering = ['name']
@@ -44,6 +44,34 @@ class CashRegisterAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Оптимизация запросов"""
         return super().get_queryset(request).select_related()
+    
+    def balances_display(self, obj):
+        """
+        Отображает текущие остатки по кассе по всем активным валютам
+        """
+        if not obj.pk:
+            return '-'
+        
+        # Получаем все активные валюты
+        currencies = Currency.objects.filter(is_active=True).order_by('code')
+        
+        if not currencies.exists():
+            return 'Нет активных валют'
+        
+        # Получаем остатки по каждой валюте
+        balances = []
+        for currency in currencies:
+            balance = obj.get_balance(currency)
+            if balance != Decimal('0.00'):
+                balances.append(f"{currency.code}: {balance:,.2f}")
+        
+        if not balances:
+            return format_html('<span style="color: #999;">Нет остатков</span>')
+        
+        return format_html('<br>'.join(balances))
+    
+    balances_display.short_description = 'Остатки по валютам'
+    balances_display.allow_tags = True
 
 
 @admin.register(IncomeExpenseItem)
@@ -60,17 +88,18 @@ class IncomeExpenseItemAdmin(admin.ModelAdmin):
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
     """Админка для справочника сотрудников"""
+    form = EmployeeAdminForm
     list_display = ['full_name', 'position', 'is_active', 'created_at']
     list_filter = ['is_active', 'created_at']
-    search_fields = ['first_name', 'last_name', 'middle_name', 'position']
+    search_fields = ['first_name', 'last_name', 'middle_name', 'position', 'name']
     ordering = ['last_name', 'first_name', 'middle_name']
     list_editable = ['is_active']
     fieldsets = (
         ('Основная информация', {
-            'fields': ('first_name', 'last_name', 'middle_name', 'position')
+            'fields': ('first_name', 'last_name', 'middle_name', 'position', 'name')
         }),
         ('Дополнительно', {
-            'fields': ('name', 'code', 'description', 'is_active')
+            'fields': ('code', 'description', 'is_active')
         }),
     )
 
@@ -146,26 +175,81 @@ class ExpenseDocumentAdmin(admin.ModelAdmin):
 @admin.register(AdvancePayment)
 class AdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов выдачи денег подотчетному лицу"""
-    list_display = ['number', 'date', 'employee', 'cash_register', 'currency', 'amount', 'expense_item', 'is_closed', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date', 'employee', 'cash_register', 'currency', 'amount', 'additional_payments_display', 'unreported_balance_display', 'expense_item', 'is_closed', 'is_posted', 'is_deleted']
     list_filter = ['employee', 'currency', 'expense_item', 'is_closed', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'purpose']
     ordering = ['-date', '-created_at']
     raw_id_fields = ['employee', 'cash_register', 'currency', 'expense_item']
     date_hierarchy = 'date'
-    readonly_fields = ['is_posted', 'created_at', 'updated_at']
+    readonly_fields = ['is_posted', 'additional_payments_display', 'unreported_balance_display', 'created_at', 'updated_at']
     
     fieldsets = (
         ('Основная информация', {
             'fields': ('number', 'date', 'employee', 'cash_register', 'currency', 'amount', 'expense_item', 'purpose')
         }),
         ('Статусы', {
-            'fields': ('is_closed', 'closed_at', 'is_posted', 'is_deleted')
+            'fields': ('is_closed', 'closed_at', 'is_posted', 'is_deleted', 'additional_payments_display', 'unreported_balance_display')
         }),
         ('Системная информация', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
+    
+    def additional_payments_display(self, obj):
+        """
+        Отображает сумму дополнительных выдач по этой выдаче
+        """
+        if not obj.pk:
+            return '-'
+        
+        from django.apps import apps
+        AdditionalAdvancePayment = apps.get_model('accounting', 'AdditionalAdvancePayment')
+        
+        additional_sum = AdditionalAdvancePayment.objects.filter(
+            original_advance_payment=obj,
+            is_deleted=False
+        ).aggregate(total=Sum('amount'))['total']
+        
+        if additional_sum is None:
+            additional_sum = Decimal('0.00')
+        
+        # Если валюта не установлена, используем общий формат
+        currency_code = obj.currency.code if obj.currency else ''
+        
+        if additional_sum == Decimal('0.00'):
+            return format_html('<span style="color: #999;">{}</span>', f'{additional_sum:,.2f} {currency_code}')
+        else:
+            return format_html('<span style="color: #007bff; font-weight: bold;">{}</span>', f'{additional_sum:,.2f} {currency_code}')
+    
+    additional_payments_display.short_description = 'Доп. выдачи'
+    additional_payments_display.allow_tags = True
+    
+    def unreported_balance_display(self, obj):
+        """
+        Отображает не закрытый остаток по выдаче
+        """
+        if not obj.pk:
+            return '-'
+        
+        try:
+            balance = obj.get_unreported_balance()
+        except (AttributeError, TypeError):
+            return '-'
+        
+        # Если валюта не установлена, используем общий формат
+        currency_code = obj.currency.code if obj.currency else ''
+        
+        # Форматируем остаток с цветом
+        if balance == Decimal('0.00'):
+            return format_html('<span style="color: #28a745; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
+        elif balance > Decimal('0.00'):
+            return format_html('<span style="color: #ffc107; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
+        else:
+            return format_html('<span style="color: #dc3545; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
+    
+    unreported_balance_display.short_description = 'Не закрытый остаток'
+    unreported_balance_display.allow_tags = True
 
 
 class AdvanceReportItemInline(admin.TabularInline):
@@ -247,17 +331,17 @@ class AdvanceReturnAdmin(admin.ModelAdmin):
 @admin.register(AdditionalAdvancePayment)
 class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов дополнительной выдачи подотчетных средств"""
-    list_display = ['number', 'date', 'original_advance_payment', 'employee', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
-    list_filter = ['employee', 'currency', 'cash_register', 'is_posted', 'is_deleted', 'date']
-    search_fields = ['number', 'purpose']
+    list_display = ['number', 'date', 'original_advance_payment', 'employee_display', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
+    list_filter = ['currency', 'cash_register', 'is_posted', 'is_deleted', 'date', 'original_advance_payment__employee']
+    search_fields = ['number', 'purpose', 'original_advance_payment__number']
     ordering = ['-date', '-created_at']
-    raw_id_fields = ['original_advance_payment', 'employee', 'cash_register', 'currency']
+    raw_id_fields = ['original_advance_payment', 'cash_register', 'currency']
     date_hierarchy = 'date'
-    readonly_fields = ['is_posted', 'created_at', 'updated_at']
+    readonly_fields = ['is_posted', 'employee_display', 'created_at', 'updated_at']
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('number', 'date', 'original_advance_payment', 'employee', 'cash_register', 'currency', 'amount', 'purpose')
+            'fields': ('number', 'date', 'original_advance_payment', 'employee_display', 'cash_register', 'currency', 'amount', 'purpose')
         }),
         ('Статусы', {
             'fields': ('is_posted', 'is_deleted')
@@ -267,6 +351,16 @@ class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    def employee_display(self, obj):
+        """
+        Отображает сотрудника из первоначальной выдачи
+        """
+        if obj.original_advance_payment:
+            return obj.original_advance_payment.employee
+        return '-'
+    
+    employee_display.short_description = 'Сотрудник'
 
 
 @admin.register(CashTransfer)

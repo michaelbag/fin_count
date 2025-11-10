@@ -151,11 +151,10 @@ class BaseReference(models.Model):
     )
     code = models.CharField(
         max_length=50,
-        unique=True,
         blank=True,
         null=True,
         verbose_name='Код',
-        help_text='Уникальный код элемента справочника'
+        help_text='Может быть введен вручную (до 50 символов) или сгенерирован автоматически'
     )
     description = models.TextField(
         blank=True,
@@ -181,6 +180,63 @@ class BaseReference(models.Model):
             models.Index(fields=['name']),
             models.Index(fields=['is_active']),
         ]
+        # Уникальность кода обеспечивается в конкретных моделях через UniqueConstraint
+        # Составной уникальный индекс: (тип справочника, код)
+
+    def clean(self):
+        """Валидация модели"""
+        super().clean()
+
+    def save(self, *args, **kwargs):
+        """Сохранение справочника с автоматической генерацией кода"""
+        # Автоматическая генерация кода, если он не указан
+        if not self.code:
+            self.code = self.generate_reference_code()
+        
+        # Валидация перед сохранением
+        self.full_clean()
+        
+        super().save(*args, **kwargs)
+
+    def generate_reference_code(self):
+        """
+        Генерирует уникальный код справочника для типа справочника.
+        Формат: SC0000001 (префикс 2 символа + номер счетчика 7 символов)
+        """
+        # Получаем глобальный префикс из настроек
+        prefix = getattr(settings, 'DOCUMENT_NUMBER_PREFIX', 'SC')
+        if len(prefix) > 2:
+            prefix = prefix[:2]
+        elif len(prefix) < 2:
+            prefix = prefix.ljust(2, 'X')
+        
+        # Определяем тип справочника (имя модели)
+        ref_type = self.__class__.__name__
+        
+        # Находим максимальный код среди всех элементов данного типа справочника с таким префиксом
+        # Ищем элементы с кодами, начинающимися с префикса и имеющими формат SC0000001
+        existing_refs = self.__class__.objects.filter(
+            code__startswith=prefix
+        ).exclude(id=self.id if self.pk else None)
+        
+        max_number = 0
+        for ref in existing_refs:
+            # Проверяем, что код имеет правильный формат (префикс + 7 цифр)
+            if ref.code and len(ref.code) == 9 and ref.code[:2] == prefix:
+                try:
+                    num_part = int(ref.code[2:])
+                    if num_part > max_number:
+                        max_number = num_part
+                except ValueError:
+                    continue
+        
+        # Увеличиваем счетчик на 1
+        new_number = max_number + 1
+        
+        # Формируем код: префикс + 7-значный номер с лидирующими нулями
+        code_str = f"{prefix}{new_number:07d}"
+        
+        return code_str
 
     def __str__(self):
         return self.name

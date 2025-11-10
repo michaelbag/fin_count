@@ -6,7 +6,7 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
     <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
-    &rsaquo; <a href="{% url 'reports_index' %}">Отчеты</a>
+    &rsaquo; <a href="{% url 'accounting:reports_index' %}">Отчеты</a>
     &rsaquo; {{ title }}
 </div>
 {% endblock %}
@@ -71,9 +71,9 @@
     </table>
 </div>
 
-<div style="margin-top: 20px;">
-    <a href="{% url 'accounting:reports_index' %}" class="button">← К списку отчетов</a>
-    <a href="{% url 'admin:index' %}" class="button">← Вернуться в админ-панель</a>
+<div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+    <a href="{% url 'accounting:reports_index' %}" class="button" style="margin-right: 10px;">← К списку отчетов</a>
+    <a href="{% url 'admin:index' %}" class="button" style="background-color: #417690; color: white;">🏠 Вернуться в админ-панель</a>
 </div>
 {% endblock %}
 

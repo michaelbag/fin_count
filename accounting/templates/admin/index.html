@@ -15,12 +15,15 @@
 <div id="content-main">
   {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   
-  <div class="module" style="margin-top: 20px;">
-    <h2>Отчеты</h2>
+  <div class="module" style="margin-top: 20px; border: 2px solid #417690;">
+    <h2 style="color: #417690; margin-bottom: 15px;">📊 Отчеты</h2>
     <div style="padding: 10px;">
-      <a href="{% url 'accounting:reports_index' %}" class="button" style="font-size: 14px; padding: 10px 20px;">
-        📊 Перейти к отчетам
+      <a href="{% url 'accounting:reports_index' %}" class="button" style="font-size: 16px; padding: 12px 25px; background-color: #417690; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+        📊 Перейти к отчетам →
       </a>
+      <p style="margin-top: 10px; color: #666; font-size: 13px;">
+        Доступ к отчетам по остаткам, операциям и движению денежных средств
+      </p>
     </div>
   </div>
 </div>

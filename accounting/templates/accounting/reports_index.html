@@ -10,6 +10,14 @@
 </div>
 {% endblock %}
 
+{% block nav-global %}
+<div style="float: right; margin-right: 20px; margin-top: 10px;">
+    <a href="{% url 'admin:index' %}" class="button" style="text-decoration: none;">
+        ← Вернуться в админ-панель
+    </a>
+</div>
+{% endblock %}
+
 {% block content %}
 <h1>{{ title }}</h1>
 
@@ -40,8 +48,9 @@
     </table>
 </div>
 
-<div style="margin-top: 20px;">
-    <a href="{% url 'admin:index' %}" class="button">← Вернуться в админ-панель</a>
+<div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+    <a href="{% url 'admin:index' %}" class="button" style="margin-right: 10px;">← Вернуться в админ-панель</a>
+    <a href="{% url 'admin:index' %}" class="button" style="background-color: #417690; color: white;">🏠 Главная админ-панели</a>
 </div>
 {% endblock %}
 

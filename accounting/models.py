@@ -33,6 +33,13 @@ class Currency(BaseReference):
         verbose_name = 'Валюта'
         verbose_name_plural = 'Валюты'
         ordering = ['code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'],
+                name='unique_currency_code',
+                condition=models.Q(code__isnull=False)
+            )
+        ]
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -80,6 +87,13 @@ class CashRegister(BaseReference):
     class Meta:
         verbose_name = 'Касса'
         verbose_name_plural = 'Кассы'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'],
+                name='unique_cashregister_code',
+                condition=models.Q(code__isnull=False)
+            )
+        ]
 
 
 class IncomeExpenseItem(BaseReference):
@@ -107,6 +121,13 @@ class IncomeExpenseItem(BaseReference):
         verbose_name = 'Статья доходов/расходов'
         verbose_name_plural = 'Статьи доходов/расходов'
         ordering = ['type', 'name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'],
+                name='unique_incomeexpenseitem_code',
+                condition=models.Q(code__isnull=False)
+            )
+        ]
 
 
 class Employee(BaseReference):
@@ -163,8 +184,8 @@ class Employee(BaseReference):
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
             
             additional = AdditionalAdvancePayment.objects.filter(
-                employee=self,
-                currency=currency,
+                original_advance_payment__employee=self,
+                original_advance_payment__currency=currency,
                 is_deleted=False
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
             
@@ -207,6 +228,13 @@ class Employee(BaseReference):
         verbose_name = 'Сотрудник'
         verbose_name_plural = 'Сотрудники'
         ordering = ['last_name', 'first_name', 'middle_name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'],
+                name='unique_employee_code',
+                condition=models.Q(code__isnull=False)
+            )
+        ]
 
     def __str__(self):
         return self.full_name
@@ -290,6 +318,13 @@ class CurrencyRate(BaseReference):
             models.Index(fields=['from_currency', 'to_currency', 'date']),
         ]
         ordering = ['-date', 'from_currency', 'to_currency']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'],
+                name='unique_currencyrate_code',
+                condition=models.Q(code__isnull=False)
+            )
+        ]
 
     def __str__(self):
         return f"{self.from_currency.code}/{self.to_currency.code} = {self.rate} на {self.date}"
@@ -735,6 +770,87 @@ class AdvancePayment(BaseDocument):
             if self.is_posted:
                 AdvancePayment.objects.filter(pk=self.pk).update(is_posted=False)
 
+    def get_unreported_balance(self):
+        """
+        Получить остаток неотчитанных средств по конкретной выдаче.
+        Учитывает дополнительные выдачи, подтвержденные отчеты, возвраты и доплаты.
+        """
+        if not self.pk or self.is_deleted:
+            return Decimal('0.00')
+        
+        # Если amount не установлен, возвращаем 0
+        if not self.amount:
+            return Decimal('0.00')
+        
+        # Ленивый импорт для избежания циклического импорта
+        from django.apps import apps
+        AdditionalAdvancePayment = apps.get_model('accounting', 'AdditionalAdvancePayment')
+        AdvanceReport = apps.get_model('accounting', 'AdvanceReport')
+        AdvanceReturn = apps.get_model('accounting', 'AdvanceReturn')
+        Transaction = apps.get_model('accounting', 'Transaction')
+        
+        try:
+            # Сумма первоначальной выдачи
+            issued = self.amount or Decimal('0.00')
+            
+            # Дополнительные выдачи по этой выдаче
+            additional = AdditionalAdvancePayment.objects.filter(
+                original_advance_payment=self,
+                is_deleted=False
+            ).aggregate(total=Sum('amount'))['total']
+            if additional is None:
+                additional = Decimal('0.00')
+            
+            total_issued = issued + additional
+            
+            # Подтвержденные отчеты по этой выдаче
+            confirmed_reports = AdvanceReport.objects.filter(
+                advance_payment=self,
+                status='confirmed',
+                is_deleted=False
+            ).aggregate(total=Sum('total_amount'))['total']
+            if confirmed_reports is None:
+                confirmed_reports = Decimal('0.00')
+            
+            # Возвраты (отдельные документы + возвраты по отчетам)
+            # Отдельные документы возврата
+            returns_docs = AdvanceReturn.objects.filter(
+                advance_payment=self,
+                is_deleted=False
+            ).aggregate(total=Sum('amount'))['total']
+            if returns_docs is None:
+                returns_docs = Decimal('0.00')
+            
+            # Возвраты по авансовым отчетам (через Transaction)
+            returns_reports = Transaction.objects.filter(
+                advance_payment=self,
+                transaction_type='advance_return_report'
+            ).exclude(
+                Q(advance_report__isnull=False, advance_report__is_deleted=True)
+            ).aggregate(total=Sum('amount'))['total']
+            if returns_reports is None:
+                returns_reports = Decimal('0.00')
+            
+            total_returns = returns_docs + abs(returns_reports)
+            
+            # Доплаты по авансовым отчетам (через Transaction)
+            additional_payments = Transaction.objects.filter(
+                advance_payment=self,
+                transaction_type='advance_additional'
+            ).exclude(
+                Q(advance_report__isnull=False, advance_report__is_deleted=True)
+            ).aggregate(total=Sum('amount'))['total']
+            if additional_payments is None:
+                additional_payments = Decimal('0.00')
+            
+            # Остаток = Выданные - Отчитанные - Возвраты + Доплаты
+            balance = total_issued - confirmed_reports - total_returns + additional_payments
+            
+            return balance
+        except LookupError:
+            # Модели документов еще не реализованы
+            return Decimal('0.00')
+    
     def __str__(self):
         return f"Выдача №{self.number} от {self.date.strftime('%d.%m.%Y')} - {self.amount} {self.currency.code}"
 
@@ -929,6 +1045,12 @@ class AdvanceReport(BaseDocument):
         
         # Если статус 'confirmed', создаем операции
         if self.status == 'confirmed' and not self.is_deleted:
+            # Сначала очищаем связи OneToOneField в AdvanceReportItem перед удалением транзакций
+            for report_item in self.items.all():
+                if report_item.transaction:
+                    report_item.transaction = None
+                    report_item.save(update_fields=['transaction'])
+            
             # Удаляем старые операции для этого отчета
             Transaction.objects.filter(
                 Q(advance_report=self) |
@@ -957,7 +1079,7 @@ class AdvanceReport(BaseDocument):
                     created_by=getattr(self, '_current_user', None),
                 )
                 report_item.transaction = transaction
-                report_item.save()
+                report_item.save(update_fields=['transaction'])
             
             # Создаем операцию возврата, если есть
             if self.return_amount > 0:
@@ -993,7 +1115,6 @@ class AdvanceReport(BaseDocument):
                 if not self.close_advance_payment:
                     AdditionalAdvancePayment.objects.create(
                         original_advance_payment=self.advance_payment,
-                        employee=self.advance_payment.employee,
                         cash_register=self.advance_payment.cash_register,
                         currency=self.currency,
                         amount=self.additional_payment,
@@ -1221,11 +1342,6 @@ class AdditionalAdvancePayment(BaseDocument):
         related_name='additional_payments',
         verbose_name='Первоначальная выдача подотчетных средств'
     )
-    employee = models.ForeignKey(
-        Employee,
-        on_delete=models.PROTECT,
-        verbose_name='Сотрудник'
-    )
     cash_register = models.ForeignKey(
         CashRegister,
         on_delete=models.PROTECT,
@@ -1254,6 +1370,59 @@ class AdditionalAdvancePayment(BaseDocument):
                 name='unique_additional_advance_payment_number_per_year'
             )
         ]
+
+    def clean(self):
+        """Валидация документа"""
+        super().clean()
+        if self.amount <= 0:
+            raise ValidationError({'amount': 'Сумма дополнительной выдачи должна быть положительной'})
+
+    def save(self, *args, **kwargs):
+        """Сохранение с автоматическим созданием операции"""
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        if not self.is_deleted:
+            # Ленивый импорт для избежания циклического импорта
+            from django.apps import apps
+            Transaction = apps.get_model('accounting', 'Transaction')
+            
+            # Создаем или обновляем операцию (отрицательная сумма)
+            transaction, created = Transaction.objects.get_or_create(
+                additional_advance_payment=self,
+                defaults={
+                    'date': self.date,
+                    'transaction_type': 'additional_advance_payment',
+                    'amount': -self.amount,  # Отрицательная сумма для расхода
+                    'description': f'Дополнительная выдача подотчетных средств №{self.number}',
+                    'cash_register': self.cash_register,
+                    'currency': self.currency,
+                    'employee': self.original_advance_payment.employee,
+                    'created_by': getattr(self, '_current_user', None),
+                }
+            )
+            
+            if not created:
+                # Обновляем существующую операцию
+                transaction.date = self.date
+                transaction.amount = -self.amount
+                transaction.description = f'Дополнительная выдача подотчетных средств №{self.number}'
+                transaction.cash_register = self.cash_register
+                transaction.currency = self.currency
+                transaction.employee = self.original_advance_payment.employee
+                transaction.save()
+            
+            # Устанавливаем is_posted в True
+            if not self.is_posted:
+                self.is_posted = True
+                AdditionalAdvancePayment.objects.filter(pk=self.pk).update(is_posted=True)
+        else:
+            # Удаляем операции при пометке на удаление
+            from django.apps import apps
+            Transaction = apps.get_model('accounting', 'Transaction')
+            Transaction.objects.filter(additional_advance_payment=self).delete()
+            if self.is_posted:
+                AdditionalAdvancePayment.objects.filter(pk=self.pk).update(is_posted=False)
 
     def __str__(self):
         return f"Доп. выдача №{self.number} от {self.date.strftime('%d.%m.%Y')} - {self.amount} {self.currency.code}"

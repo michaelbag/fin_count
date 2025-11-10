@@ -8,6 +8,7 @@ from .api_views import (
     EmployeeViewSet, CurrencyRateViewSet, AdvancePaymentViewSet,
     IncomeDocumentViewSet
 )
+from . import auth_views
 
 router = DefaultRouter()
 router.register(r'currencies', CurrencyViewSet, basename='currency')
@@ -20,5 +21,9 @@ router.register(r'income-documents', IncomeDocumentViewSet, basename='incomedocu
 
 urlpatterns = [
     path('api/v1/', include(router.urls)),
+    # Аутентификация
+    path('api/v1/auth/login/', auth_views.login_view, name='api-login'),
+    path('api/v1/auth/logout/', auth_views.logout_view, name='api-logout'),
+    path('api/v1/auth/current-user/', auth_views.current_user_view, name='api-current-user'),
 ]
 

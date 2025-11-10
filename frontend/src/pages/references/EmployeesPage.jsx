@@ -20,6 +20,8 @@ import {
   FormControlLabel,
   Switch,
   CircularProgress,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
@@ -29,6 +31,8 @@ import { useForm, Controller } from 'react-hook-form'
 
 function EmployeesPage() {
   const navigate = useNavigate()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
@@ -139,7 +143,19 @@ function EmployeesPage() {
         </Table>
       </TableContainer>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={() => setOpenDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+        fullScreen={isMobile}
+        sx={{
+          '& .MuiDialog-paper': {
+            m: { xs: 0, sm: 2 },
+            maxHeight: { xs: '100vh', sm: '90vh' },
+          },
+        }}
+      >
         <DialogTitle>
           {editingEmployee ? 'Редактирование сотрудника' : 'Создание сотрудника'}
         </DialogTitle>

@@ -109,31 +109,49 @@ function DocumentsPage() {
                 flexDirection: 'column',
                 cursor: 'pointer',
                 transition: 'transform 0.2s, box-shadow 0.2s',
+                '&:active': {
+                  transform: 'scale(0.98)',
+                },
                 '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4,
+                  transform: { xs: 'none', sm: 'translateY(-4px)' },
+                  boxShadow: { xs: 2, sm: 4 },
                 },
               }}
               onClick={() => navigate(docType.path)}
             >
-              <CardContent sx={{ flexGrow: 1, textAlign: 'center' }}>
-                <Box sx={{ color: docType.color, mb: 2 }}>
-                  {docType.icon}
+              <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: { xs: 2, sm: 3 } }}>
+                <Box sx={{ color: docType.color, mb: { xs: 1.5, sm: 2 } }}>
+                  {React.cloneElement(docType.icon, { 
+                    sx: { fontSize: { xs: 40, sm: 48 } } 
+                  })}
                 </Box>
-                <Typography variant="h6" gutterBottom>
+                <Typography 
+                  variant="h6" 
+                  gutterBottom
+                  sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
+                >
                   {docType.title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+                >
                   {docType.description}
                 </Typography>
               </CardContent>
-              <CardActions sx={{ justifyContent: 'center', pb: 2 }}>
+              <CardActions sx={{ justifyContent: 'center', pb: { xs: 1.5, sm: 2 } }}>
                 <Button
                   size="small"
                   variant="contained"
                   onClick={(e) => {
                     e.stopPropagation()
                     navigate(docType.path)
+                  }}
+                  sx={{
+                    minHeight: { xs: '44px', sm: 'auto' },
+                    fontSize: { xs: '0.9rem', sm: '0.875rem' },
+                    px: { xs: 3, sm: 2 },
                   }}
                 >
                   Открыть

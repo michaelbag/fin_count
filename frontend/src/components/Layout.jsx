@@ -13,12 +13,18 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Button,
+  Menu,
+  MenuItem,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import DescriptionIcon from '@mui/icons-material/Description'
 import FolderIcon from '@mui/icons-material/Folder'
 import AssessmentIcon from '@mui/icons-material/Assessment'
+import AccountCircleIcon from '@mui/icons-material/AccountCircle'
+import LogoutIcon from '@mui/icons-material/Logout'
+import { useAuth } from '../contexts/AuthContext'
 
 const drawerWidth = 240
 
@@ -31,11 +37,27 @@ const menuItems = [
 
 function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [anchorEl, setAnchorEl] = useState(null)
   const navigate = useNavigate()
   const location = useLocation()
+  const { user, logout } = useAuth()
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
+  }
+
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget)
+  }
+
+  const handleMenuClose = () => {
+    setAnchorEl(null)
+  }
+
+  const handleLogout = async () => {
+    handleMenuClose()
+    await logout()
+    navigate('/login')
   }
 
   const drawer = (
@@ -84,9 +106,66 @@ function Layout({ children }) {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">
+          <Typography 
+            variant="h6" 
+            noWrap 
+            component="div"
+            sx={{ 
+              fontSize: { xs: '0.95rem', sm: '1.25rem' },
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              flexGrow: 1,
+            }}
+          >
             Система финансового учета
           </Typography>
+          {user && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  display: { xs: 'none', sm: 'block' },
+                  fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                }}
+              >
+                {user.first_name || user.username}
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={handleMenuOpen}
+                sx={{ color: 'inherit' }}
+              >
+                <AccountCircleIcon />
+              </IconButton>
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleMenuClose}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+              >
+                <MenuItem disabled>
+                  <Typography variant="body2">
+                    {user.username}
+                    {user.email && ` (${user.email})`}
+                  </Typography>
+                </MenuItem>
+                <Divider />
+                <MenuItem onClick={handleLogout}>
+                  <ListItemIcon>
+                    <LogoutIcon fontSize="small" />
+                  </ListItemIcon>
+                  Выйти
+                </MenuItem>
+              </Menu>
+            </Box>
+          )}
         </Toolbar>
       </AppBar>
       <Box
@@ -128,9 +207,12 @@ function Layout({ children }) {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          p: { xs: 1.5, sm: 3 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: 8,
+          mt: { xs: 7, sm: 8 },
+          pb: { xs: 2, sm: 3 },
+          // Поддержка safe area для iPhone
+          paddingBottom: { xs: 'max(12px, env(safe-area-inset-bottom))', sm: 3 },
         }}
       >
         {children}

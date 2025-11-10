@@ -56,11 +56,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     'accounting',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS middleware должен быть как можно выше
+    'accounting.middleware.DisableCSRFForAPI',  # Отключаем CSRF для API
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -187,3 +190,39 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Загружается из переменной окружения DOCUMENT_NUMBER_PREFIX
 # По умолчанию: 'SC'
 DOCUMENT_NUMBER_PREFIX = os.getenv('DOCUMENT_NUMBER_PREFIX', 'SC')
+
+# Django REST Framework настройки
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',  # Требуется авторизация по умолчанию
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
+}
+
+# CORS настройки для доступа с любых IP адресов
+# ВНИМАНИЕ: Для production рекомендуется ограничить CORS_ALLOWED_ORIGINS
+CORS_ALLOW_ALL_ORIGINS = True  # Разрешить все источники (для разработки)
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# CSRF настройки для API
+# Для API endpoints через REST Framework CSRF проверка отключается автоматически
+# Но для сессионной аутентификации нужно разрешить определенные источники
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False  # Нужно для чтения через JavaScript
+CSRF_USE_SESSIONS = False

@@ -20,6 +20,8 @@ import {
   FormControlLabel,
   Switch,
   CircularProgress,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
@@ -29,6 +31,8 @@ import { useForm, Controller } from 'react-hook-form'
 
 function CurrenciesPage() {
   const navigate = useNavigate()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const [currencies, setCurrencies] = useState([])
   const [loading, setLoading] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
@@ -87,29 +91,71 @@ function CurrenciesPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          mb: { xs: 2, sm: 3 },
+          gap: { xs: 2, sm: 0 },
+        }}
+      >
+        <Box sx={{ flex: 1 }}>
           <Button
             variant="text"
             startIcon={<ArrowBackIcon />}
             onClick={() => navigate('/references')}
-            sx={{ mb: 1 }}
+            sx={{ 
+              mb: { xs: 0.5, sm: 1 },
+              minHeight: { xs: '44px', sm: '36px' },
+              fontSize: { xs: '0.9rem', sm: '0.875rem' },
+            }}
           >
             Назад к справочникам
           </Button>
-          <Typography variant="h4">Валюты</Typography>
+          <Typography 
+            variant="h4"
+            sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}
+          >
+            Валюты
+          </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreate}>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />} 
+          onClick={handleCreate}
+          sx={{
+            minHeight: { xs: '44px', sm: '36px' },
+            fontSize: { xs: '0.9rem', sm: '0.875rem' },
+            width: { xs: '100%', sm: 'auto' },
+          }}
+        >
           Добавить валюту
         </Button>
       </Box>
-      <TableContainer component={Paper}>
-        <Table>
+      <TableContainer 
+        component={Paper}
+        sx={{
+          maxWidth: '100%',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        <Table 
+          sx={{ 
+            minWidth: { xs: 500, sm: 'auto' },
+            '& .MuiTableCell-root': {
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              padding: { xs: '8px', sm: '16px' },
+            },
+          }}
+        >
           <TableHead>
             <TableRow>
               <TableCell>Код</TableCell>
               <TableCell>Название</TableCell>
-              <TableCell>Символ</TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Символ</TableCell>
               <TableCell>Активна</TableCell>
               <TableCell align="right">Действия</TableCell>
             </TableRow>
@@ -119,11 +165,20 @@ function CurrenciesPage() {
               <TableRow key={currency.id}>
                 <TableCell>{currency.code}</TableCell>
                 <TableCell>{currency.name}</TableCell>
-                <TableCell>{currency.symbol}</TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                  {currency.symbol}
+                </TableCell>
                 <TableCell>{currency.is_active ? 'Да' : 'Нет'}</TableCell>
                 <TableCell align="right">
-                  <IconButton size="small" onClick={() => handleEdit(currency)}>
-                    <EditIcon />
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleEdit(currency)}
+                    sx={{ 
+                      minWidth: { xs: '44px', sm: 'auto' },
+                      minHeight: { xs: '44px', sm: 'auto' },
+                    }}
+                  >
+                    <EditIcon fontSize={isMobile ? 'medium' : 'small'} />
                   </IconButton>
                 </TableCell>
               </TableRow>
@@ -132,7 +187,19 @@ function CurrenciesPage() {
         </Table>
       </TableContainer>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={() => setOpenDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+        fullScreen={isMobile}
+        sx={{
+          '& .MuiDialog-paper': {
+            m: { xs: 0, sm: 2 },
+            maxHeight: { xs: '100vh', sm: '90vh' },
+          },
+        }}
+      >
         <DialogTitle>
           {editingCurrency ? 'Редактирование валюты' : 'Создание валюты'}
         </DialogTitle>
@@ -193,9 +260,24 @@ function CurrenciesPage() {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Отмена</Button>
-          <Button onClick={handleSubmit(onSubmit)} variant="contained">
+        <DialogActions sx={{ p: { xs: 2, sm: 3 } }}>
+          <Button 
+            onClick={() => setOpenDialog(false)}
+            sx={{ 
+              minHeight: { xs: '44px', sm: 'auto' },
+              fontSize: { xs: '0.9rem', sm: '0.875rem' },
+            }}
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={handleSubmit(onSubmit)} 
+            variant="contained"
+            sx={{ 
+              minHeight: { xs: '44px', sm: 'auto' },
+              fontSize: { xs: '0.9rem', sm: '0.875rem' },
+            }}
+          >
             Сохранить
           </Button>
         </DialogActions>

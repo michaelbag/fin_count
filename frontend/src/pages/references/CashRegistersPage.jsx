@@ -29,6 +29,8 @@ import { useForm, Controller } from 'react-hook-form'
 
 function CashRegistersPage() {
   const navigate = useNavigate()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const [cashRegisters, setCashRegisters] = useState([])
   const [loading, setLoading] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
@@ -132,7 +134,19 @@ function CashRegistersPage() {
         </Table>
       </TableContainer>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={() => setOpenDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+        fullScreen={isMobile}
+        sx={{
+          '& .MuiDialog-paper': {
+            m: { xs: 0, sm: 2 },
+            maxHeight: { xs: '100vh', sm: '90vh' },
+          },
+        }}
+      >
         <DialogTitle>
           {editingCashRegister ? 'Редактирование кассы' : 'Создание кассы'}
         </DialogTitle>

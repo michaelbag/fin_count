@@ -22,6 +22,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
@@ -32,6 +34,8 @@ import { incomeDocumentsAPI, cashRegistersAPI, currenciesAPI } from '../services
 
 function IncomeDocumentsPage() {
   const navigate = useNavigate()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -130,29 +134,59 @@ function IncomeDocumentsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          mb: { xs: 2, sm: 3 },
+          gap: { xs: 2, sm: 0 },
+        }}
+      >
+        <Box sx={{ flex: 1 }}>
           <Button
             variant="text"
             startIcon={<ArrowBackIcon />}
             onClick={() => navigate('/documents')}
-            sx={{ mb: 1 }}
+            sx={{ 
+              mb: { xs: 0.5, sm: 1 },
+              minHeight: { xs: '44px', sm: '36px' },
+              fontSize: { xs: '0.9rem', sm: '0.875rem' },
+            }}
           >
             Назад к документам
           </Button>
-          <Typography variant="h4">Приход денежных средств</Typography>
+          <Typography 
+            variant="h4"
+            sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}
+          >
+            Приход денежных средств
+          </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />}>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />}
+          sx={{ 
+            minHeight: { xs: '44px', sm: '36px' },
+            fontSize: { xs: '0.9rem', sm: '0.875rem' },
+            width: { xs: '100%', sm: 'auto' },
+          }}
+        >
           Создать
         </Button>
       </Box>
 
       {/* Фильтры */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 2, sm: 3 } }}>
+        <Typography 
+          variant="h6" 
+          gutterBottom
+          sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
+        >
           Фильтры
         </Typography>
-        <Grid container spacing={2}>
+        <Grid container spacing={{ xs: 1.5, sm: 2 }}>
           <Grid item xs={12} sm={6} md={3}>
             <FormControl fullWidth>
               <InputLabel>Касса</InputLabel>
@@ -160,6 +194,12 @@ function IncomeDocumentsPage() {
                 value={filters.cash_register}
                 label="Касса"
                 onChange={(e) => handleFilterChange('cash_register', e.target.value)}
+                sx={{ 
+                  '& .MuiSelect-select': { 
+                    minHeight: { xs: '44px', sm: 'auto' },
+                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                  } 
+                }}
               >
                 <MenuItem value="">Все кассы</MenuItem>
                 {cashRegisters.map((reg) => (
@@ -177,6 +217,12 @@ function IncomeDocumentsPage() {
                 value={filters.currency}
                 label="Валюта"
                 onChange={(e) => handleFilterChange('currency', e.target.value)}
+                sx={{ 
+                  '& .MuiSelect-select': { 
+                    minHeight: { xs: '44px', sm: 'auto' },
+                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                  } 
+                }}
               >
                 <MenuItem value="">Все валюты</MenuItem>
                 {currencies.map((curr) => (
@@ -195,6 +241,12 @@ function IncomeDocumentsPage() {
               InputLabelProps={{ shrink: true }}
               value={filters.date_from}
               onChange={(e) => handleFilterChange('date_from', e.target.value)}
+              sx={{ 
+                '& .MuiInputBase-input': { 
+                  minHeight: { xs: '44px', sm: 'auto' },
+                  fontSize: { xs: '0.9rem', sm: '1rem' },
+                } 
+              }}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
@@ -205,6 +257,12 @@ function IncomeDocumentsPage() {
               InputLabelProps={{ shrink: true }}
               value={filters.date_to}
               onChange={(e) => handleFilterChange('date_to', e.target.value)}
+              sx={{ 
+                '& .MuiInputBase-input': { 
+                  minHeight: { xs: '44px', sm: 'auto' },
+                  fontSize: { xs: '0.9rem', sm: '1rem' },
+                } 
+              }}
             />
           </Grid>
         </Grid>
@@ -222,8 +280,28 @@ function IncomeDocumentsPage() {
         </Box>
       ) : (
         <>
-          <TableContainer component={Paper}>
-            <Table>
+          <TableContainer 
+            component={Paper}
+            sx={{
+              maxWidth: '100%',
+              overflowX: 'auto',
+              // Улучшенная прокрутка на мобильных
+              WebkitOverflowScrolling: 'touch',
+              '&::-webkit-scrollbar': {
+                height: { xs: '8px', sm: '12px' },
+              },
+            }}
+          >
+            <Table 
+              sx={{ 
+                minWidth: { xs: 800, sm: 'auto' }, // Минимальная ширина для горизонтальной прокрутки
+                '& .MuiTableCell-root': {
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                  padding: { xs: '8px', sm: '16px' },
+                  whiteSpace: { xs: 'nowrap', sm: 'normal' },
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
                   <TableCell>№</TableCell>
@@ -231,8 +309,8 @@ function IncomeDocumentsPage() {
                   <TableCell>Касса</TableCell>
                   <TableCell>Валюта</TableCell>
                   <TableCell>Сумма</TableCell>
-                  <TableCell>Статья дохода</TableCell>
-                  <TableCell>Описание</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Статья дохода</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Описание</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell align="right">Действия</TableCell>
                 </TableRow>
@@ -252,8 +330,12 @@ function IncomeDocumentsPage() {
                       <TableCell>{doc.cash_register_name || doc.cash_register || '-'}</TableCell>
                       <TableCell>{doc.currency_code || doc.currency || '-'}</TableCell>
                       <TableCell>{formatAmount(doc.amount)}</TableCell>
-                      <TableCell>{doc.item_name || doc.item || '-'}</TableCell>
-                      <TableCell>{doc.description || '-'}</TableCell>
+                      <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                        {doc.item_name || doc.item || '-'}
+                      </TableCell>
+                      <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                        {doc.description || '-'}
+                      </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                           {doc.is_posted && (
@@ -269,15 +351,23 @@ function IncomeDocumentsPage() {
                           size="small"
                           onClick={() => {}}
                           color="primary"
+                          sx={{ 
+                            minWidth: { xs: '44px', sm: 'auto' },
+                            minHeight: { xs: '44px', sm: 'auto' },
+                          }}
                         >
-                          <EditIcon />
+                          <EditIcon fontSize={isMobile ? 'medium' : 'small'} />
                         </IconButton>
                         <IconButton
                           size="small"
                           onClick={() => handleDelete(doc.id)}
                           color="error"
+                          sx={{ 
+                            minWidth: { xs: '44px', sm: 'auto' },
+                            minHeight: { xs: '44px', sm: 'auto' },
+                          }}
                         >
-                          <DeleteIcon />
+                          <DeleteIcon fontSize={isMobile ? 'medium' : 'small'} />
                         </IconButton>
                       </TableCell>
                     </TableRow>
@@ -288,12 +378,20 @@ function IncomeDocumentsPage() {
           </TableContainer>
 
           {count > 1 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: { xs: 2, sm: 3 } }}>
               <Pagination
                 count={count}
                 page={page}
                 onChange={(e, value) => setPage(value)}
                 color="primary"
+                size={isMobile ? 'small' : 'medium'}
+                sx={{
+                  '& .MuiPaginationItem-root': {
+                    minWidth: { xs: '36px', sm: '40px' },
+                    minHeight: { xs: '36px', sm: '40px' },
+                    fontSize: { xs: '0.875rem', sm: '1rem' },
+                  },
+                }}
               />
             </Box>
           )}

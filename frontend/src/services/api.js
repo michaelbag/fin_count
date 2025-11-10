@@ -5,16 +5,27 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true,
+  withCredentials: true, // Важно для сессионной аутентификации и CSRF
 })
 
+// CSRF токен больше не требуется, так как мы отключили CSRF проверку для API endpoints
+// через middleware DisableCSRFForAPI
+
 // Interceptor для обработки ошибок
+let onUnauthorized = null
+
+export const setUnauthorizedHandler = (handler) => {
+  onUnauthorized = handler
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Перенаправление на страницу входа при необходимости
-      console.error('Unauthorized')
+      // Вызываем обработчик неавторизованного доступа
+      if (onUnauthorized) {
+        onUnauthorized()
+      }
     }
     return Promise.reject(error)
   }
@@ -79,4 +90,11 @@ export const currencyRatesAPI = {
   create: (data) => api.post('/currency-rates/', data),
   update: (id, data) => api.put(`/currency-rates/${id}/`, data),
   delete: (id) => api.delete(`/currency-rates/${id}/`),
+}
+
+// API методы для аутентификации
+export const authAPI = {
+  login: (username, password) => api.post('/auth/login/', { username, password }),
+  logout: () => api.post('/auth/logout/'),
+  getCurrentUser: () => api.get('/auth/current-user/'),
 }

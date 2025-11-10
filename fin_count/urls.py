@@ -25,5 +25,8 @@ urlpatterns = [
     path('admin/registers/', registers_admin.urls),
     # Основной раздел админки
     path('admin/', admin.site.urls),
+    # API URLs
+    path('', include('accounting.api_urls')),
+    # Отчеты и другие URLs
     path('', include('accounting.urls')),
 ]

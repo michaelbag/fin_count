@@ -51,6 +51,9 @@ db.sqlite3-journal
 .env
 .env.local
 
+# Frontend local configuration
+frontend/vite.config.js
+
 # Coverage reports
 htmlcov/
 .tox/

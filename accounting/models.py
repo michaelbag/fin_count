@@ -897,7 +897,23 @@ class AdvancePayment(BaseDocument):
             return Decimal('0.00')
     
     def __str__(self):
-        return f"Выдача №{self.number} от {self.date.strftime('%d.%m.%Y')} - {self.amount} {self.currency.code}"
+        """
+        Отображение выдачи с информацией о сотруднике, сумме и незакрытом остатке.
+        Используется в autocomplete и других местах.
+        """
+        employee_name = self.employee.full_name if hasattr(self.employee, 'full_name') and self.employee else 'Не указан'
+        amount_str = f"{self.amount:,.2f}".replace(',', ' ') if self.amount else "0.00"
+        currency_code = self.currency.code if self.currency else ""
+        
+        # Получаем незакрытую сумму по выдаче
+        try:
+            unreported_balance = self.get_unreported_balance()
+            balance_str = f"{unreported_balance:,.2f}".replace(',', ' ') if unreported_balance else "0.00"
+            balance_info = f", остаток: {balance_str} {currency_code}"
+        except (AttributeError, TypeError):
+            balance_info = ""
+        
+        return f"Выдача №{self.number} от {self.date.strftime('%d.%m.%Y')} - {employee_name}: {amount_str} {currency_code}{balance_info}"
 
 
 class AdvanceReport(BaseDocument):
@@ -1072,6 +1088,7 @@ class AdvanceReport(BaseDocument):
         from django.apps import apps
         Transaction = apps.get_model('accounting', 'Transaction')
         AdditionalAdvancePayment = apps.get_model('accounting', 'AdditionalAdvancePayment')
+        AdvanceReportItem = apps.get_model('accounting', 'AdvanceReportItem')
         
         # Если статус изменился с 'confirmed' на другой, удаляем все операции
         if old_status == 'confirmed' and self.status != 'confirmed':
@@ -1090,26 +1107,40 @@ class AdvanceReport(BaseDocument):
         
         # Если статус 'confirmed', создаем операции
         if self.status == 'confirmed' and not self.is_deleted:
-            # Сначала очищаем связи OneToOneField в AdvanceReportItem перед удалением транзакций
+            # КРИТИЧЕСКИ ВАЖНО: Удаляем ВСЕ старые операции для этого отчета ПЕРЕД созданием новых
+            # Это нужно делать в правильном порядке, чтобы избежать конфликтов с OneToOneField
+            
+            # Шаг 1: Получаем все ID транзакций, связанных с этим отчетом
+            transaction_ids_to_delete = list(
+                Transaction.objects.filter(
+                    Q(advance_report=self) |
+                    Q(advance_report_item__report=self)
+                ).values_list('pk', flat=True)
+            )
+            
+            # Шаг 2: Очищаем связи OneToOneField в AdvanceReportItem ПЕРЕД удалением транзакций
+            # Это критически важно, чтобы Django не пытался найти транзакцию через обратную связь
             for report_item in self.items.all():
-                if report_item.transaction:
-                    report_item.transaction = None
-                    report_item.save(update_fields=['transaction'])
+                if report_item.transaction_id:
+                    # Используем update() напрямую, чтобы обойти проверку через get()
+                    AdvanceReportItem.objects.filter(pk=report_item.pk).update(transaction_id=None)
             
-            # Удаляем старые операции для этого отчета
-            Transaction.objects.filter(
-                Q(advance_report=self) |
-                Q(advance_report_item__report=self) |
-                (Q(transaction_type='advance_return_report') & Q(advance_report=self)) |
-                (Q(transaction_type='advance_additional') & Q(advance_report=self))
-            ).delete()
+            # Шаг 3: Удаляем все транзакции по ID (более надежный способ)
+            if transaction_ids_to_delete:
+                Transaction.objects.filter(pk__in=transaction_ids_to_delete).delete()
             
-            # Создаем операции по каждой строке отчета
+            # Шаг 4: Дополнительная очистка на случай, если что-то пропустили
+            Transaction.objects.filter(advance_report_item__report=self).delete()
+            Transaction.objects.filter(advance_report=self).delete()
+            
+            # Шаг 5: Создаем операции по каждой строке отчета
             for report_item in self.items.all():
                 # Валидация статьи расходов
                 if report_item.item != self.advance_payment.expense_item:
                     continue  # Пропускаем строки с неправильной статьей
                 
+                # Создаем новую транзакцию БЕЗ установки advance_report_item сразу
+                # Это критически важно, чтобы избежать проверки уникальности OneToOneField при создании
                 transaction = Transaction.objects.create(
                     date=report_item.date,
                     transaction_type='advance_report',
@@ -1120,41 +1151,86 @@ class AdvanceReport(BaseDocument):
                     item=report_item.item,
                     employee=self.advance_payment.employee,
                     advance_report=self,
-                    advance_report_item=report_item,
+                    # НЕ устанавливаем advance_report_item здесь - установим через update()
                     created_by=getattr(self, '_current_user', None),
                 )
-                report_item.transaction = transaction
-                report_item.save(update_fields=['transaction'])
+                
+                # Шаг 6: Устанавливаем advance_report_item через update() транзакции
+                # Это обходит проверку уникальности OneToOneField через обратную связь
+                Transaction.objects.filter(pk=transaction.pk).update(advance_report_item_id=report_item.pk)
+                
+                # Шаг 7: Связываем транзакцию со строкой отчета через OneToOneField
+                # Используем update() напрямую с transaction_id, чтобы обойти проверку через get()
+                AdvanceReportItem.objects.filter(pk=report_item.pk).update(transaction_id=transaction.pk)
+                
+                # Обновляем объект в памяти, чтобы избежать проблем с кешем
+                report_item.refresh_from_db()
             
             # Создаем операцию возврата, если есть
             if self.return_amount > 0:
-                Transaction.objects.create(
-                    date=self.date,
-                    transaction_type='advance_return_report',
-                    amount=self.return_amount,  # Положительная сумма для поступления
-                    description=f'Возврат по авансовому отчету №{self.number}',
-                    cash_register=self.advance_payment.cash_register,
-                    currency=self.currency,
-                    employee=self.advance_payment.employee,
+                # Проверяем, нет ли уже транзакции возврата для этого отчета
+                return_transaction = Transaction.objects.filter(
                     advance_report=self,
-                    advance_payment=self.advance_payment,
-                    created_by=getattr(self, '_current_user', None),
-                )
+                    transaction_type='advance_return_report'
+                ).first()
+                
+                if return_transaction:
+                    # Обновляем существующую транзакцию
+                    return_transaction.date = self.date
+                    return_transaction.amount = self.return_amount
+                    return_transaction.description = f'Возврат по авансовому отчету №{self.number}'
+                    return_transaction.cash_register = self.advance_payment.cash_register
+                    return_transaction.currency = self.currency
+                    return_transaction.employee = self.advance_payment.employee
+                    return_transaction.advance_payment = self.advance_payment
+                    return_transaction.save()
+                else:
+                    # Создаем новую транзакцию
+                    Transaction.objects.create(
+                        date=self.date,
+                        transaction_type='advance_return_report',
+                        amount=self.return_amount,  # Положительная сумма для поступления
+                        description=f'Возврат по авансовому отчету №{self.number}',
+                        cash_register=self.advance_payment.cash_register,
+                        currency=self.currency,
+                        employee=self.advance_payment.employee,
+                        advance_report=self,
+                        advance_payment=self.advance_payment,
+                        created_by=getattr(self, '_current_user', None),
+                    )
             
             # Создаем операцию доплаты, если есть
             if self.additional_payment > 0:
-                Transaction.objects.create(
-                    date=self.date,
-                    transaction_type='advance_additional',
-                    amount=self.additional_payment,  # Положительная сумма для доплаты
-                    description=f'Доплата по авансовому отчету №{self.number}',
-                    cash_register=self.advance_payment.cash_register,
-                    currency=self.currency,
-                    employee=self.advance_payment.employee,
+                # Проверяем, нет ли уже транзакции доплаты для этого отчета
+                additional_transaction = Transaction.objects.filter(
                     advance_report=self,
-                    advance_payment=self.advance_payment,
-                    created_by=getattr(self, '_current_user', None),
-                )
+                    transaction_type='advance_additional'
+                ).first()
+                
+                if additional_transaction:
+                    # Обновляем существующую транзакцию
+                    additional_transaction.date = self.date
+                    additional_transaction.amount = self.additional_payment
+                    additional_transaction.description = f'Доплата по авансовому отчету №{self.number}'
+                    additional_transaction.cash_register = self.advance_payment.cash_register
+                    additional_transaction.currency = self.currency
+                    additional_transaction.employee = self.advance_payment.employee
+                    additional_transaction.advance_payment = self.advance_payment
+                    additional_transaction.save()
+                else:
+                    # Создаем новую транзакцию
+                    Transaction.objects.create(
+                        date=self.date,
+                        transaction_type='advance_additional',
+                        amount=self.additional_payment,  # Положительная сумма для доплаты
+                        description=f'Доплата по авансовому отчету №{self.number}',
+                        cash_register=self.advance_payment.cash_register,
+                        currency=self.currency,
+                        employee=self.advance_payment.employee,
+                        advance_report=self,
+                        advance_payment=self.advance_payment,
+                        created_by=getattr(self, '_current_user', None),
+                    )
                 
                 # Если close_advance_payment=False и есть доплата, создаем новую выдачу
                 if not self.close_advance_payment:

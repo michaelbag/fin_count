@@ -1,0 +1,28 @@
+/* Стили для формы AdvanceReport - максимальная ширина поля advance_payment */
+.field-advance_payment .related-widget-wrapper,
+.field-advance_payment .select2-container,
+.field-advance_payment input[type="text"],
+.field-advance_payment select {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+
+/* Для autocomplete виджета */
+.field-advance_payment .select2-container--default {
+    width: 100% !important;
+}
+
+.field-advance_payment .select2-selection {
+    width: 100% !important;
+}
+
+/* Контейнер поля на всю ширину */
+.field-advance_payment {
+    width: 100% !important;
+}
+
+.field-advance_payment .form-row {
+    width: 100% !important;
+}
+

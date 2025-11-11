@@ -1,5 +1,5 @@
 from django import forms
-from .models import CurrencyRate, Currency, Employee, CashRegister, AdvancePayment
+from .models import CurrencyRate, Currency, Employee, CashRegister, AdvancePayment, AdvanceReport
 
 
 class CurrencyModelChoiceField(forms.ModelChoiceField):
@@ -157,3 +157,32 @@ class AdvancePaymentAdminForm(forms.ModelForm):
         
         if 'cash_register' in self.fields:
             self.fields['cash_register'].help_text = 'Выберите кассу из списка активных касс'
+
+
+class AdvanceReportAdminForm(forms.ModelForm):
+    """Форма для админки AdvanceReport с радио-кнопками для статуса"""
+    
+    class Meta:
+        model = AdvanceReport
+        fields = '__all__'
+        widgets = {
+            'status': forms.RadioSelect(),
+        }
+    
+    class Media:
+        css = {
+            'all': ('admin/css/advance_report_form.css',)
+        }
+        js = ('admin/js/advance_report_form.js',)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Добавляем CSS класс для поля advance_payment для максимальной ширины
+        if 'advance_payment' in self.fields:
+            # Получаем виджет поля
+            widget = self.fields['advance_payment'].widget
+            # Добавляем CSS класс для стилизации
+            if hasattr(widget, 'attrs'):
+                widget.attrs['class'] = widget.attrs.get('class', '') + ' advance-payment-full-width'
+            else:
+                widget.attrs = {'class': 'advance-payment-full-width'}

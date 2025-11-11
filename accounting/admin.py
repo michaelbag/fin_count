@@ -4,6 +4,8 @@
 """
 from django.contrib import admin
 from django.contrib.admin import AdminSite
+from django.contrib.auth.models import User
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.db.models import Sum, Q
@@ -17,7 +19,7 @@ from .models import (
     AdvanceReturn, AdditionalAdvancePayment, CashTransfer, CurrencyConversion
 )
 from .admin_sites import references_admin, documents_admin, registers_admin
-from .forms import CurrencyRateAdminForm, EmployeeAdminForm, AdvancePaymentAdminForm
+from .forms import CurrencyRateAdminForm, EmployeeAdminForm, AdvancePaymentAdminForm, AdvanceReportAdminForm
 
 
 # ============================================================================
@@ -236,6 +238,82 @@ class AdvancePaymentAdmin(admin.ModelAdmin):
         }),
     )
     
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Переопределяем поиск для autocomplete_fields.
+        Показываем только не закрытые выдачи, если запрос идет из формы AdvanceReport.
+        При редактировании существующего AdvanceReport показываем также текущую выдачу, даже если она закрыта.
+        """
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        
+        # Проверяем, идет ли запрос из формы AdvanceReport
+        app_label = request.GET.get('app_label', '')
+        model_name = request.GET.get('model_name', '')
+        referer = request.META.get('HTTP_REFERER', '')
+        
+        is_from_advance_report = (
+            (app_label == 'accounting' and model_name == 'advancereport') or 
+            'advancereport' in referer.lower()
+        )
+        
+        if is_from_advance_report:
+            # Получаем ID текущего объекта AdvanceReport (если редактируется существующий)
+            forward = request.GET.get('forward', '')
+            current_advance_payment_id = None
+            
+            # Пытаемся получить ID текущего advance_payment из параметра forward
+            # forward может содержать JSON с информацией о текущем объекте
+            if forward:
+                try:
+                    import json
+                    forward_data = json.loads(forward)
+                    # Ищем ID advance_payment в данных формы
+                    if 'advance_payment' in forward_data:
+                        current_advance_payment_id = forward_data['advance_payment']
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+            
+            # Если не нашли в forward, пытаемся получить из объекта формы
+            # Это работает при редактировании существующего объекта
+            if not current_advance_payment_id:
+                # Пытаемся получить из URL или referer
+                # При редактировании в URL есть ID объекта (UUID), при создании - "add"
+                import re
+                import uuid
+                match = re.search(r'/advancereport/([^/]+)/', referer)
+                if match:
+                    report_id = match.group(1)
+                    # Пропускаем, если это создание нового документа ("add")
+                    if report_id == 'add':
+                        pass
+                    else:
+                        # Проверяем, что это валидный UUID
+                        try:
+                            # Пытаемся создать UUID объект - если не получится, будет ValueError
+                            uuid.UUID(report_id)
+                            # Если дошли сюда, значит это валидный UUID
+                            from .models import AdvanceReport
+                            report = AdvanceReport.objects.filter(pk=report_id).first()
+                            if report and report.advance_payment:
+                                current_advance_payment_id = report.advance_payment.pk
+                        except (ValueError, AttributeError, TypeError):
+                            # Если report_id не является валидным UUID, игнорируем
+                            pass
+            
+            # Фильтруем: показываем только не закрытые выдачи
+            # ИЛИ текущую выдачу (если она уже выбрана в редактируемом документе)
+            if current_advance_payment_id:
+                # Показываем не закрытые ИЛИ текущую выбранную
+                queryset = queryset.filter(
+                    Q(is_closed=False) | 
+                    Q(pk=current_advance_payment_id)
+                )
+            else:
+                # Показываем только не закрытые
+                queryset = queryset.filter(is_closed=False)
+        
+        return queryset, use_distinct
+    
     @admin.display(description='Доп. выдачи')
     def additional_payments_display(self, obj):
         """
@@ -308,14 +386,15 @@ class AdvanceReportItemAdmin(admin.ModelAdmin):
 
 class AdvanceReportAdmin(admin.ModelAdmin):
     """Админка для авансовых отчетов"""
+    form = AdvanceReportAdminForm
     list_display = ['number', 'date', 'advance_payment', 'total_amount', 'return_amount', 'additional_payment', 'status', 'is_posted', 'is_deleted']
     list_filter = ['status', 'currency', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number']
     ordering = ['-date', '-created_at']
-    raw_id_fields = ['advance_payment', 'currency', 'approved_by']
     date_hierarchy = 'date'
     readonly_fields = ['is_posted', 'created_at', 'updated_at', 'approved_at']
     inlines = [AdvanceReportItemInline]
+    autocomplete_fields = ['advance_payment', 'currency', 'approved_by']
     
     fieldsets = (
         ('Основная информация', {
@@ -335,6 +414,15 @@ class AdvanceReportAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    def save_model(self, request, obj, form, change):
+        """
+        Автоматически заполняем approved_by текущим пользователем при создании нового документа.
+        """
+        if not change:  # Если это новый документ (не редактирование)
+            if not obj.approved_by:  # Если approved_by еще не установлен
+                obj.approved_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 class AdvanceReturnAdmin(admin.ModelAdmin):
@@ -549,6 +637,42 @@ documents_admin.register(CurrencyConversion, CurrencyConversionAdmin)
 
 # Регистрация регистров в кастомном AdminSite
 registers_admin.register(Transaction, TransactionAdmin)
+
+
+# ============================================================================
+# РЕГИСТРАЦИЯ МОДЕЛЕЙ В СТАНДАРТНОМ ADMIN SITE
+# ============================================================================
+# Регистрируем все модели также в стандартном admin.site для доступа через /admin/
+
+# Справочники уже зарегистрированы через @admin.register декораторы выше
+# (Currency, CashRegister, IncomeExpenseItem, Employee, CurrencyRate)
+
+# Регистрируем документы в стандартном admin.site
+admin.site.register(IncomeDocument, IncomeDocumentAdmin)
+admin.site.register(ExpenseDocument, ExpenseDocumentAdmin)
+admin.site.register(AdvancePayment, AdvancePaymentAdmin)
+admin.site.register(AdvanceReport, AdvanceReportAdmin)
+admin.site.register(AdvanceReportItem, AdvanceReportItemAdmin)
+admin.site.register(AdvanceReturn, AdvanceReturnAdmin)
+admin.site.register(AdditionalAdvancePayment, AdditionalAdvancePaymentAdmin)
+admin.site.register(CashTransfer, CashTransferAdmin)
+admin.site.register(CurrencyConversion, CurrencyConversionAdmin)
+
+# Регистрируем регистры в стандартном admin.site
+admin.site.register(Transaction, TransactionAdmin)
+
+# Регистрируем модель User для использования в autocomplete_fields
+# Проверяем, не зарегистрирована ли уже модель User
+if not admin.site.is_registered(User):
+    admin.site.register(User, BaseUserAdmin)
+
+# Также регистрируем User в кастомных AdminSite для работы autocomplete
+if not references_admin.is_registered(User):
+    references_admin.register(User, BaseUserAdmin)
+if not documents_admin.is_registered(User):
+    documents_admin.register(User, BaseUserAdmin)
+if not registers_admin.is_registered(User):
+    registers_admin.register(User, BaseUserAdmin)
 
 
 # ============================================================================

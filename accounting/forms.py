@@ -186,3 +186,53 @@ class AdvanceReportAdminForm(forms.ModelForm):
                 widget.attrs['class'] = widget.attrs.get('class', '') + ' advance-payment-full-width'
             else:
                 widget.attrs = {'class': 'advance-payment-full-width'}
+        
+        # Добавляем подсказки для обязательных полей
+        if 'advance_payment' in self.fields:
+            self.fields['advance_payment'].help_text = 'Обязательное поле. Выберите выданные подотчетные средства.'
+        if 'currency' in self.fields:
+            self.fields['currency'].help_text = 'Обязательное поле. Выберите валюту отчета.'
+        if 'total_amount' in self.fields:
+            self.fields['total_amount'].help_text = 'Обязательное поле. Укажите общую сумму расходов или оставьте пустым для автоматического расчета из строк отчета.'
+    
+    def clean(self):
+        """Валидация формы с понятными сообщениями об ошибках"""
+        cleaned_data = super().clean()
+        
+        # Проверка обязательных полей
+        errors = {}
+        
+        if not cleaned_data.get('advance_payment'):
+            errors['advance_payment'] = 'Это поле обязательно для заполнения. Выберите выданные подотчетные средства.'
+        
+        if not cleaned_data.get('currency'):
+            errors['currency'] = 'Это поле обязательно для заполнения. Выберите валюту отчета.'
+        
+        # Проверка наличия строк отчета
+        if self.instance and self.instance.pk:
+            # Для существующего объекта проверяем через instance
+            if not self.instance.items.exists():
+                errors['__all__'] = 'Добавьте хотя бы одну строку в авансовый отчет (во вкладке "Строки авансового отчета" внизу формы).'
+        elif not cleaned_data.get('total_amount'):
+            # Для нового объекта, если нет total_amount, должны быть строки
+            # Но строки еще не созданы, поэтому просто предупреждаем
+            pass
+        
+        # Проверка суммы расходов
+        total_amount = cleaned_data.get('total_amount')
+        if total_amount is not None and total_amount < 0:
+            errors['total_amount'] = 'Общая сумма расходов не может быть отрицательной.'
+        
+        # Проверка ручных сумм
+        manual_return = cleaned_data.get('manual_return_amount')
+        if manual_return is not None and manual_return < 0:
+            errors['manual_return_amount'] = 'Сумма возврата не может быть отрицательной.'
+        
+        manual_additional = cleaned_data.get('manual_additional_payment')
+        if manual_additional is not None and manual_additional < 0:
+            errors['manual_additional_payment'] = 'Сумма доплаты не может быть отрицательной.'
+        
+        if errors:
+            raise forms.ValidationError(errors)
+        
+        return cleaned_data

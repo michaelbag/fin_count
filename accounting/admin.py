@@ -2,6 +2,7 @@
 Настройка Django Admin для системы финансового учета.
 Все настройки соответствуют техническому заданию версии 2.0.
 """
+from django import forms
 from django.contrib import admin
 from django.contrib.admin import AdminSite
 from django.contrib.auth.models import User
@@ -168,7 +169,7 @@ class CurrencyRateAdmin(admin.ModelAdmin):
 
 class IncomeDocumentAdmin(admin.ModelAdmin):
     """Админка для документов оприходования денег"""
-    list_display = ['number', 'date', 'cash_register', 'currency', 'amount', 'item', 'employee', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'cash_register', 'currency', 'amount', 'item', 'employee', 'is_posted', 'is_deleted']
     list_filter = ['cash_register', 'currency', 'item', 'employee', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'description']
     ordering = ['-date', '-created_at']
@@ -188,11 +189,20 @@ class IncomeDocumentAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
 
 
 class ExpenseDocumentAdmin(admin.ModelAdmin):
     """Админка для документов расхода денег"""
-    list_display = ['number', 'date', 'cash_register', 'currency', 'amount', 'item', 'employee', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'cash_register', 'currency', 'amount', 'item', 'employee', 'is_posted', 'is_deleted']
     list_filter = ['cash_register', 'currency', 'item', 'employee', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'description']
     ordering = ['-date', '-created_at']
@@ -212,12 +222,21 @@ class ExpenseDocumentAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
 
 
 class AdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов выдачи денег подотчетному лицу"""
     form = AdvancePaymentAdminForm
-    list_display = ['number', 'date', 'employee', 'cash_register', 'currency', 'amount', 'additional_payments_display', 'unreported_balance_display', 'expense_item', 'is_closed', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'employee', 'cash_register', 'currency', 'amount', 'additional_payments_display', 'unreported_balance_display', 'expense_item', 'is_closed', 'is_posted', 'is_deleted']
     list_filter = ['employee', 'currency', 'expense_item', 'is_closed', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'purpose']
     ordering = ['-date', '-created_at']
@@ -364,6 +383,15 @@ class AdvancePaymentAdmin(admin.ModelAdmin):
             return format_html('<span style="color: #ffc107; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
         else:
             return format_html('<span style="color: #dc3545; font-weight: bold;">{}</span>', f'{balance:,.2f} {currency_code}')
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
 
 
 class AdvanceReportItemInline(admin.TabularInline):
@@ -371,7 +399,258 @@ class AdvanceReportItemInline(admin.TabularInline):
     model = AdvanceReportItem
     extra = 1
     fields = ['item', 'amount', 'description', 'date']
-    raw_id_fields = ['item']
+    readonly_fields = ['item']
+    
+    def get_readonly_fields(self, request, obj=None):
+        """Статья расходов должна соответствовать статье из выданных подотчетных средств"""
+        return ['item']
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        """Автоматически устанавливаем статью расходов из advance_payment"""
+        formset = super().get_formset(request, obj, **kwargs)
+        
+        # Сохраняем ссылку на родительский объект для использования в formfield_for_foreignkey
+        self._parent_obj = obj
+        
+        # Получаем базовую форму из formset
+        BaseForm = formset.form
+        
+        class AdvanceReportItemForm(BaseForm):
+            """Форма для строки авансового отчета с автоматическим заполнением даты"""
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                # Делаем поля необязательными для новых пустых форм
+                # Это позволяет оставлять пустые строки без ошибок валидации
+                if not self.instance.pk:
+                    if 'date' in self.fields:
+                        self.fields['date'].required = False
+                    if 'amount' in self.fields:
+                        self.fields['amount'].required = False
+                    if 'description' in self.fields:
+                        self.fields['description'].required = False
+                
+                # Устанавливаем текущую дату и время по умолчанию для новых строк
+                if not self.instance.pk and 'date' in self.fields:
+                    from django.utils import timezone
+                    if not self.initial.get('date'):
+                        self.initial['date'] = timezone.now()
+                    # Также устанавливаем в поле, если оно пустое
+                    if not self.fields['date'].initial:
+                        self.fields['date'].initial = timezone.now()
+            
+            def clean_date(self):
+                """Автоматически устанавливаем дату и время, если не заполнены"""
+                # Получаем значение из cleaned_data (может быть None, если поле не заполнено)
+                date_value = self.cleaned_data.get('date')
+                
+                if not date_value:
+                    # Если дата не заполнена, устанавливаем текущую дату и время
+                    from django.utils import timezone
+                    date_value = timezone.now()
+                else:
+                    # Если дата заполнена, но время не указано (00:00:00), добавляем текущее время
+                    from django.utils import timezone
+                    from datetime import datetime, time as dt_time
+                    if isinstance(date_value, datetime):
+                        # Если это datetime, но время не установлено (00:00:00), заменяем на текущее время
+                        if date_value.time() == dt_time(0, 0, 0):
+                            # Сохраняем дату, но устанавливаем текущее время
+                            current_time = timezone.now()
+                            date_value = date_value.replace(
+                                hour=current_time.hour,
+                                minute=current_time.minute,
+                                second=current_time.second,
+                                microsecond=current_time.microsecond
+                            )
+                
+                return date_value
+        
+        # Заменяем форму в formset
+        formset.form = AdvanceReportItemForm
+        
+        class AdvanceReportItemFormSet(formset):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                # Получаем статью расходов из родительского объекта или из данных формы
+                expense_item = None
+                if obj and obj.advance_payment and obj.advance_payment.expense_item:
+                    expense_item = obj.advance_payment.expense_item
+                elif hasattr(self, 'data') and self.data:
+                    # Пытаемся получить advance_payment из данных формы
+                    try:
+                        # В Django admin формах advance_payment может быть в разных форматах
+                        advance_payment_id = None
+                        if hasattr(self.data, 'get'):
+                            advance_payment_id = self.data.get('advance_payment') or self.data.get('advance_payment_0')
+                        elif isinstance(self.data, dict):
+                            advance_payment_id = self.data.get('advance_payment') or self.data.get('advance_payment_0')
+                        
+                        if advance_payment_id:
+                            from .models import AdvancePayment
+                            advance_payment = AdvancePayment.objects.filter(pk=advance_payment_id).first()
+                            if advance_payment and advance_payment.expense_item:
+                                expense_item = advance_payment.expense_item
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+                
+                # Устанавливаем значения по умолчанию для новых форм
+                from django.utils import timezone
+                current_datetime = timezone.now()
+                
+                for form in self.forms:
+                    if not form.instance.pk:
+                        # Устанавливаем initial значение для readonly поля (статья расходов)
+                        if expense_item:
+                            form.initial['item'] = expense_item.pk
+                            # Также устанавливаем в cleaned_data для валидации
+                            if hasattr(form, 'cleaned_data'):
+                                form.cleaned_data['item'] = expense_item
+                        
+                        # Устанавливаем текущую дату и время по умолчанию, если не заполнено
+                        if 'date' not in form.initial or not form.initial.get('date'):
+                            form.initial['date'] = current_datetime
+                        
+                        # Также устанавливаем в cleaned_data, если форма уже была очищена
+                        if hasattr(form, 'cleaned_data') and not form.cleaned_data.get('date'):
+                            form.cleaned_data['date'] = current_datetime
+            
+            def clean(self):
+                """Валидация inline форм с понятными сообщениями об ошибках"""
+                cleaned_data = super().clean()
+                
+                # Получаем статью расходов из родительского объекта или из данных формы
+                expense_item = None
+                if obj and obj.advance_payment and obj.advance_payment.expense_item:
+                    expense_item = obj.advance_payment.expense_item
+                elif hasattr(self, 'data') and self.data:
+                    # Пытаемся получить advance_payment из данных формы
+                    try:
+                        advance_payment_id = None
+                        if hasattr(self.data, 'get'):
+                            advance_payment_id = self.data.get('advance_payment') or self.data.get('advance_payment_0')
+                        elif isinstance(self.data, dict):
+                            advance_payment_id = self.data.get('advance_payment') or self.data.get('advance_payment_0')
+                        
+                        if advance_payment_id:
+                            from .models import AdvancePayment
+                            advance_payment = AdvancePayment.objects.filter(pk=advance_payment_id).first()
+                            if advance_payment and advance_payment.expense_item:
+                                expense_item = advance_payment.expense_item
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+                
+                errors = []
+                for i, form in enumerate(self.forms):
+                    # Пропускаем пустые формы и помеченные на удаление
+                    if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+                        continue
+                    
+                    # Проверяем, является ли форма пустой (не заполнены обязательные поля)
+                    # Если сумма не заполнена, считаем форму пустой и пропускаем её
+                    amount = form.cleaned_data.get('amount')
+                    if not amount or amount == 0:
+                        # Для пустых форм не устанавливаем обязательные поля
+                        # Это позволит Django автоматически пропустить их при сохранении
+                        continue
+                    
+                    # КРИТИЧЕСКИ ВАЖНО: Устанавливаем статью расходов в cleaned_data и instance
+                    item = form.cleaned_data.get('item')
+                    if not item and expense_item:
+                        # Автоматически устанавливаем статью расходов
+                        form.cleaned_data['item'] = expense_item
+                        # Также устанавливаем в instance, чтобы оно было доступно при сохранении
+                        if hasattr(form, 'instance'):
+                            form.instance.item = expense_item
+                        item = expense_item
+                    elif item and expense_item and item != expense_item:
+                        # Если статья расходов не соответствует, заменяем на правильную
+                        form.cleaned_data['item'] = expense_item
+                        if hasattr(form, 'instance'):
+                            form.instance.item = expense_item
+                        item = expense_item
+                    
+                    if not item:
+                        errors.append(
+                            forms.ValidationError(
+                                f'Строка {i + 1}: Статья расходов не заполнена. '
+                                f'Она должна автоматически заполняться из выданных подотчетных средств. '
+                                f'Убедитесь, что в документе выбраны "Подотчетные средства".',
+                                code='missing_item'
+                            )
+                        )
+                    
+                    # Автоматически устанавливаем дату и время, если не заполнены
+                    # Это делается ДО проверки обязательных полей, чтобы избежать ошибок валидации
+                    date_value = form.cleaned_data.get('date')
+                    if not date_value:
+                        # Если дата не заполнена, устанавливаем текущую дату и время
+                        from django.utils import timezone
+                        form.cleaned_data['date'] = timezone.now()
+                    else:
+                        # Если дата заполнена, но время не указано (только дата), добавляем текущее время
+                        from django.utils import timezone
+                        from datetime import datetime, time as dt_time
+                        if isinstance(date_value, datetime):
+                            # Если это datetime, но время не установлено (00:00:00), заменяем на текущее время
+                            if date_value.time() == dt_time(0, 0, 0):
+                                # Сохраняем дату, но устанавливаем текущее время
+                                current_time = timezone.now()
+                                form.cleaned_data['date'] = date_value.replace(
+                                    hour=current_time.hour,
+                                    minute=current_time.minute,
+                                    second=current_time.second,
+                                    microsecond=current_time.microsecond
+                                )
+                    
+                    # Проверяем обязательные поля только для заполненных форм
+                    # (пустые формы уже пропущены выше по проверке amount)
+                    # Если amount не заполнена, форма считается пустой и пропускается
+                
+                if errors:
+                    raise forms.ValidationError(errors)
+                
+                return cleaned_data
+            
+            def save(self, commit=True):
+                """
+                Переопределяем save, чтобы не сохранять пустые формы
+                (где не заполнена сумма)
+                """
+                instances = super().save(commit=False)
+                
+                # Фильтруем пустые формы (где не заполнена сумма)
+                saved_instances = []
+                for instance in instances:
+                    # Пропускаем пустые строки (где не заполнена сумма или равна 0)
+                    # Проверяем amount из instance, так как он уже установлен из cleaned_data
+                    if not hasattr(instance, 'amount') or not instance.amount or instance.amount == 0:
+                        continue
+                    saved_instances.append(instance)
+                
+                # Если commit=True, сохраняем instances
+                # Если commit=False, просто возвращаем отфильтрованные instances
+                # (save_formset() сам их сохранит)
+                if commit:
+                    for instance in saved_instances:
+                        instance.save()
+                    # Удаляем помеченные на удаление
+                    for obj in self.deleted_objects:
+                        obj.delete()
+                
+                return saved_instances
+        
+        return AdvanceReportItemFormSet
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ограничиваем выбор статьи расходов только той, что указана в выданных средствах"""
+        if db_field.name == 'item':
+            # Получаем родительский объект из контекста
+            parent_obj = getattr(self, '_parent_obj', None)
+            if parent_obj and parent_obj.advance_payment and parent_obj.advance_payment.expense_item:
+                expense_item = parent_obj.advance_payment.expense_item
+                kwargs['queryset'] = IncomeExpenseItem.objects.filter(pk=expense_item.pk)
+                kwargs['initial'] = expense_item.pk
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class AdvanceReportItemAdmin(admin.ModelAdmin):
@@ -385,14 +664,18 @@ class AdvanceReportItemAdmin(admin.ModelAdmin):
 
 
 class AdvanceReportAdmin(admin.ModelAdmin):
-    """Админка для авансовых отчетов"""
+    """
+    Админка для авансовых отчетов.
+    Модель: AdvanceReport
+    Регистрация: строки 777 (documents_admin) и 800 (admin.site)
+    """
     form = AdvanceReportAdminForm
-    list_display = ['number', 'date', 'advance_payment', 'total_amount', 'return_amount', 'additional_payment', 'status', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'advance_payment', 'total_amount', 'return_amount', 'additional_payment', 'status', 'is_posted', 'is_deleted']
     list_filter = ['status', 'currency', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number']
     ordering = ['-date', '-created_at']
     date_hierarchy = 'date'
-    readonly_fields = ['is_posted', 'created_at', 'updated_at', 'approved_at']
+    readonly_fields = ['is_posted', 'created_at', 'updated_at', 'approved_at', 'return_amount', 'additional_payment']
     inlines = [AdvanceReportItemInline]
     autocomplete_fields = ['advance_payment', 'currency', 'approved_by']
     
@@ -400,8 +683,13 @@ class AdvanceReportAdmin(admin.ModelAdmin):
         ('Основная информация', {
             'fields': ('number', 'date', 'advance_payment', 'currency', 'status')
         }),
-        ('Суммы', {
-            'fields': ('total_amount', 'return_amount', 'additional_payment', 'manual_return_amount', 'manual_additional_payment')
+        ('Суммы (ручной ввод)', {
+            'fields': ('total_amount', 'manual_return_amount', 'manual_additional_payment'),
+            'description': 'Укажите общую сумму расходов. Если нужно указать возврат или доплату вручную, заполните соответствующие поля. Если оставить 0, суммы будут рассчитаны автоматически.'
+        }),
+        ('Суммы (рассчитанные)', {
+            'fields': ('return_amount', 'additional_payment'),
+            'description': 'Эти поля рассчитываются автоматически на основе суммы расходов и выданных средств. Если указаны ручные значения выше, используются они.'
         }),
         ('Управление', {
             'fields': ('close_advance_payment', 'approved_by', 'approved_at')
@@ -415,19 +703,102 @@ class AdvanceReportAdmin(admin.ModelAdmin):
         }),
     )
     
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
+    
+    def save_formset(self, request, form, formset, change):
+        """
+        Автоматически устанавливаем статью расходов для всех строк отчета
+        из advance_payment.expense_item
+        """
+        # formset.save(commit=False) уже отфильтрует пустые формы благодаря переопределенному save()
+        instances = formset.save(commit=False)
+        
+        # Получаем статью расходов из выданных подотчетных средств
+        expense_item = None
+        if form.instance.advance_payment and form.instance.advance_payment.expense_item:
+            expense_item = form.instance.advance_payment.expense_item
+        
+        # Если нет expense_item, пытаемся получить из сохраненного объекта
+        if not expense_item and form.instance.pk:
+            form.instance.refresh_from_db()
+            if form.instance.advance_payment and form.instance.advance_payment.expense_item:
+                expense_item = form.instance.advance_payment.expense_item
+        
+        if not expense_item:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                'Не выбраны "Подотчетные средства" или у выбранных средств не указана статья расходов. '
+                'Убедитесь, что в документе выбраны "Подотчетные средства" с указанной статьей расходов.'
+            )
+        
+        # Теперь instances уже отфильтрованы (пустые формы удалены в save() formset)
+        for instance in instances:
+            # КРИТИЧЕСКИ ВАЖНО: Устанавливаем статью расходов ПЕРЕД установкой даты
+            # Это должно быть сделано всегда, независимо от того, установлена ли она уже
+            instance.item = expense_item
+            
+            # Автоматически устанавливаем дату и время, если не заполнены
+            from django.utils import timezone
+            from datetime import datetime, time as dt_time
+            if not instance.date:
+                # Если дата не заполнена, устанавливаем текущую дату и время
+                instance.date = timezone.now()
+            elif isinstance(instance.date, datetime):
+                # Если дата заполнена, но время не установлено (00:00:00), заменяем на текущее время
+                if instance.date.time() == dt_time(0, 0, 0):
+                    current_time = timezone.now()
+                    instance.date = instance.date.replace(
+                        hour=current_time.hour,
+                        minute=current_time.minute,
+                        second=current_time.second,
+                        microsecond=current_time.microsecond
+                    )
+            
+            # Устанавливаем связь с отчетом, если еще не установлена
+            if not instance.report_id:
+                instance.report = form.instance
+            
+            # Валидация перед сохранением
+            try:
+                instance.full_clean()
+                instance.save()
+            except Exception as e:
+                # Если ошибка валидации, добавляем понятное сообщение
+                from django.core.exceptions import ValidationError
+                raise ValidationError(
+                    f'Ошибка при сохранении строки отчета: {str(e)}. '
+                    f'Убедитесь, что все обязательные поля заполнены.'
+                )
+        
+        # Удаляем помеченные на удаление
+        for obj in formset.deleted_objects:
+            obj.delete()
+    
     def save_model(self, request, obj, form, change):
         """
         Автоматически заполняем approved_by текущим пользователем при создании нового документа.
+        Также проверяем наличие строк отчета перед сохранением.
         """
         if not change:  # Если это новый документ (не редактирование)
             if not obj.approved_by:  # Если approved_by еще не установлен
                 obj.approved_by = request.user
+        
+        # Вызываем валидацию модели перед сохранением
+        obj.full_clean()
+        
         super().save_model(request, obj, form, change)
 
 
 class AdvanceReturnAdmin(admin.ModelAdmin):
     """Админка для документов возврата денег сотрудником"""
-    list_display = ['number', 'date', 'advance_payment', 'employee', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'advance_payment', 'employee', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
     list_filter = ['employee', 'currency', 'cash_register', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number', 'description']
     ordering = ['-date', '-created_at']
@@ -447,11 +818,20 @@ class AdvanceReturnAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
 
 
 class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
     """Админка для документов дополнительной выдачи подотчетных средств"""
-    list_display = ['number', 'date', 'original_advance_payment', 'employee_display', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'original_advance_payment', 'employee_display', 'cash_register', 'currency', 'amount', 'is_posted', 'is_deleted']
     list_filter = ['currency', 'cash_register', 'is_posted', 'is_deleted', 'date', 'original_advance_payment__employee']
     search_fields = ['number', 'purpose', 'original_advance_payment__number']
     ordering = ['-date', '-created_at']
@@ -480,13 +860,22 @@ class AdditionalAdvancePaymentAdmin(admin.ModelAdmin):
         if obj.original_advance_payment:
             return obj.original_advance_payment.employee
         return '-'
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
 
 
 class CashTransferAdmin(admin.ModelAdmin):
     """Админка для документов перемещения между кассами"""
     list_display = [
         "number",
-        "date",
+        "date_display",
         "amount_with_currency",
         "from_cash_register",
         "to_cash_register",
@@ -517,11 +906,20 @@ class CashTransferAdmin(admin.ModelAdmin):
     def amount_with_currency(self, obj):
         return format_html('<span style="white-space: nowrap;">{}</span>', f"{obj.amount} {obj.currency.symbol}")
     
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
+    
 
 
 class CurrencyConversionAdmin(admin.ModelAdmin):
     """Админка для документов конвертации валют"""
-    list_display = ['number', 'date', 'from_currency', 'to_currency', 'cash_register', 'from_amount', 'to_amount', 'exchange_rate', 'is_posted', 'is_deleted']
+    list_display = ['number', 'date_display', 'from_currency', 'to_currency', 'cash_register', 'from_amount', 'to_amount', 'exchange_rate', 'is_posted', 'is_deleted']
     list_filter = ['from_currency', 'to_currency', 'cash_register', 'is_posted', 'is_deleted', 'date']
     search_fields = ['number']
     ordering = ['-date', '-created_at']
@@ -541,6 +939,15 @@ class CurrencyConversionAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
 
 
 # ============================================================================
@@ -549,7 +956,7 @@ class CurrencyConversionAdmin(admin.ModelAdmin):
 
 class TransactionAdmin(admin.ModelAdmin):
     """Админка для журнала операций"""
-    list_display = ['date', 'transaction_type', 'cash_register', 'currency', 'amount', 'employee', 'item', 'get_document_link']
+    list_display = ['date_display', 'transaction_type', 'cash_register', 'currency', 'amount', 'employee', 'item', 'get_document_link']
     list_filter = ['transaction_type', 'currency', 'cash_register', 'employee', 'item', 'date']
     search_fields = ['description']
     ordering = ['-date', '-created_at']
@@ -582,6 +989,15 @@ class TransactionAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    @admin.display(description='Дата', ordering='date')
+    def date_display(self, obj):
+        """
+        Отображает дату в формате ДД.ММ.ГГГГ
+        """
+        if obj.date:
+            return obj.date.strftime('%d.%m.%Y')
+        return '-'
     
     @admin.display(description='Документ')
     def get_document_link(self, obj):

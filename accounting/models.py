@@ -1041,26 +1041,45 @@ class AdvanceReport(BaseDocument):
         return self.return_amount, self.additional_payment
 
     def clean(self):
-        """Валидация документа"""
+        """
+        Валидация документа.
+        Выполняется ПОСЛЕ проверки обязательных полей модели (blank=False, null=False).
+        Здесь проверяем только бизнес-логику и дополнительные ограничения.
+        """
         super().clean()
+        
+        errors = {}
+        
+        # Проверка наличия строк отчета (только для сохраненных объектов)
+        # Это бизнес-правило, а не проверка обязательного поля
+        if self.pk and not self.items.exists():
+            errors['__all__'] = 'Добавьте хотя бы одну строку в авансовый отчет (во вкладке "Строки авансового отчета" внизу формы).'
         
         # Валидация статей расходов - строгое соответствие статье выдачи
         # Проверка выполняется только для сохраненных объектов
-        if self.pk and self.advance_payment:
+        if self.pk and self.advance_payment and self.advance_payment.expense_item:
             expense_item = self.advance_payment.expense_item
             for item in self.items.all():
                 if item.item != expense_item:
-                    raise ValidationError({
-                        'items': f'Статья расходов в строке "{item.description}" ({item.item.name}) не соответствует статье расходов при выдаче ({expense_item.name})'
-                    })
+                    errors['__all__'] = (
+                        f'Статья расходов в строке "{item.description or "без описания"}" '
+                        f'({item.item.name}) не соответствует статье расходов при выдаче ({expense_item.name}). '
+                        f'Все строки отчета должны использовать ту же статью расходов, что указана в выданных подотчетных средствах.'
+                    )
+                    break  # Показываем только первую ошибку
         
-        # Валидация сумм
-        if self.total_amount and self.total_amount < 0:
-            raise ValidationError({'total_amount': 'Общая сумма расходов не может быть отрицательной'})
-        if self.return_amount and self.return_amount < 0:
-            raise ValidationError({'return_amount': 'Сумма возврата не может быть отрицательной'})
-        if self.additional_payment and self.additional_payment < 0:
-            raise ValidationError({'additional_payment': 'Сумма доплаты не может быть отрицательной'})
+        # Валидация сумм (бизнес-правила)
+        if self.total_amount is not None and self.total_amount < 0:
+            errors['total_amount'] = 'Общая сумма расходов не может быть отрицательной.'
+        
+        if self.return_amount is not None and self.return_amount < 0:
+            errors['return_amount'] = 'Сумма возврата не может быть отрицательной.'
+        
+        if self.additional_payment is not None and self.additional_payment < 0:
+            errors['additional_payment'] = 'Сумма доплаты не может быть отрицательной.'
+        
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операций при подтверждении"""
@@ -1130,6 +1149,12 @@ class AdvanceReport(BaseDocument):
                 Transaction.objects.filter(pk__in=transaction_ids_to_delete).delete()
             
             # Шаг 4: Дополнительная очистка на случай, если что-то пропустили
+            # Удаляем все транзакции, связанные с этим отчетом через строки отчета
+            # Важно: сначала очищаем связи OneToOneField, чтобы избежать ошибок при удалении
+            for report_item in self.items.all():
+                if report_item.transaction_id:
+                    AdvanceReportItem.objects.filter(pk=report_item.pk).update(transaction_id=None)
+            # Теперь безопасно удаляем все транзакции
             Transaction.objects.filter(advance_report_item__report=self).delete()
             Transaction.objects.filter(advance_report=self).delete()
             
@@ -1138,6 +1163,15 @@ class AdvanceReport(BaseDocument):
                 # Валидация статьи расходов
                 if report_item.item != self.advance_payment.expense_item:
                     continue  # Пропускаем строки с неправильной статьей
+                
+                # Проверяем, нет ли уже транзакции для этой строки отчета
+                # Удаляем все существующие транзакции для этой строки (на случай дублей)
+                existing_transactions = Transaction.objects.filter(advance_report_item=report_item)
+                if existing_transactions.exists():
+                    # Очищаем связь в AdvanceReportItem перед удалением
+                    AdvanceReportItem.objects.filter(pk=report_item.pk).update(transaction_id=None)
+                    # Удаляем все транзакции для этой строки
+                    existing_transactions.delete()
                 
                 # Создаем новую транзакцию БЕЗ установки advance_report_item сразу
                 # Это критически важно, чтобы избежать проверки уникальности OneToOneField при создании

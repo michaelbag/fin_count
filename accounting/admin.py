@@ -8,11 +8,8 @@ from django.contrib.admin import AdminSite
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from django.urls import reverse
 from django.db.models import Sum, Q
 from decimal import Decimal
-
-from django.utils.timezone import now
 from .models import (
     Currency, CashRegister, IncomeExpenseItem, Employee, CurrencyRate,
     Transaction, IncomeDocument, ExpenseDocument,

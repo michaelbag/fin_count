@@ -124,22 +124,6 @@ class EmployeeAdminForm(forms.ModelForm):
         return cleaned_data
 
 
-class CurrencyModelChoiceFieldForAdvancePayment(forms.ModelChoiceField):
-    """Поле выбора валюты для формы AdvancePayment с кастомным представлением"""
-    def label_from_instance(self, obj):
-        """Отображаем код и название валюты"""
-        return f"{obj.code} - {obj.name}"
-
-
-class CashRegisterModelChoiceFieldForAdvancePayment(forms.ModelChoiceField):
-    """Поле выбора кассы для формы AdvancePayment с кастомным представлением"""
-    def label_from_instance(self, obj):
-        """Отображаем название кассы с кодом, если есть"""
-        if obj.code:
-            return f"{obj.name} ({obj.code})"
-        return obj.name
-
-
 class AdvancePaymentAdminForm(forms.ModelForm):
     """Форма для админки AdvancePayment"""
     

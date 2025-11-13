@@ -2,9 +2,8 @@
 Views для системы финансового учета.
 Включает views для отчетов и навигации.
 """
-from django.shortcuts import render, redirect
+from django.shortcuts import render
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib import messages
 from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal

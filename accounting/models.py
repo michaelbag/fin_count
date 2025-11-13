@@ -562,7 +562,6 @@ class IncomeDocument(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операции"""
-        is_new = self.pk is None
         super().save(*args, **kwargs)
         
         if not self.is_deleted:
@@ -660,7 +659,6 @@ class ExpenseDocument(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операции"""
-        is_new = self.pk is None
         super().save(*args, **kwargs)
         
         if not self.is_deleted:
@@ -768,7 +766,6 @@ class AdvancePayment(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операции"""
-        is_new = self.pk is None
         super().save(*args, **kwargs)
         
         if not self.is_deleted:
@@ -1440,7 +1437,6 @@ class AdvanceReturn(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операции"""
-        is_new = self.pk is None
         super().save(*args, **kwargs)
         
         if not self.is_deleted:
@@ -1534,7 +1530,6 @@ class AdditionalAdvancePayment(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операции"""
-        is_new = self.pk is None
         super().save(*args, **kwargs)
         
         if not self.is_deleted:
@@ -1635,7 +1630,6 @@ class CashTransfer(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операций"""
-        is_new = self.pk is None
         super().save(*args, **kwargs)
         
         if not self.is_deleted:
@@ -1758,8 +1752,6 @@ class CurrencyConversion(BaseDocument):
 
     def save(self, *args, **kwargs):
         """Сохранение с автоматическим созданием операций и заполнением курса"""
-        is_new = self.pk is None
-        
         # Автоматическое заполнение курса обмена из справочника, если не указан
         if not self.exchange_rate or self.exchange_rate == 0:
             rate = CurrencyRate.get_rate(self.from_currency, self.to_currency, self.date.date() if hasattr(self.date, 'date') else self.date)
